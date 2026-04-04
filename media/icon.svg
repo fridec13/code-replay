@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">
+  <!-- Timeline bar (bottom) -->
+  <rect x="2" y="17" width="20" height="2" rx="1" fill="currentColor" opacity="0.6"/>
+  <!-- Function segment blocks -->
+  <rect x="2"  y="12" width="8"  height="3" rx="1" fill="currentColor" opacity="0.9"/>
+  <rect x="12" y="12" width="5"  height="3" rx="1" fill="currentColor" opacity="0.7"/>
+  <rect x="19" y="12" width="3"  height="3" rx="1" fill="currentColor" opacity="0.5"/>
+  <!-- Play button triangle -->
+  <path d="M9 5.5L16 9.5L9 13.5V5.5Z" fill="currentColor"/>
+</svg>

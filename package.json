@@ -86,8 +86,17 @@
         }
       ]
     },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "codeRecorderContainer",
+          "title": "Code Recorder",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
     "views": {
-      "explorer": [
+      "codeRecorderContainer": [
         {
           "type": "webview",
           "id": "codeRecorder.timeline",
