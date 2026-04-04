@@ -1,0 +1,10 @@
+.vscode/**
+node_modules/**
+src/**
+esbuild.js
+tsconfig.json
+.eslintrc.json
+**/*.map
+**/*.ts
+!dist/**
+!tracers/**

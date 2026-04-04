@@ -1,0 +1,139 @@
+{
+  "name": "code-recorder",
+  "displayName": "Code Recorder",
+  "description": "Record and replay code execution with function highlights, variable decorations, and a timeline panel.",
+  "version": "0.1.0",
+  "publisher": "code-recorder",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Debuggers", "Visualization"],
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:codeRecorder.recordPython",
+    "onCommand:codeRecorder.recordJS",
+    "onCommand:codeRecorder.liveMode",
+    "onCommand:codeRecorder.openTimeline",
+    "onView:codeRecorder.timeline"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "codeRecorder.recordPython",
+        "title": "Code Recorder: Record Python File",
+        "icon": "$(record)"
+      },
+      {
+        "command": "codeRecorder.recordJS",
+        "title": "Code Recorder: Record JS/TS File",
+        "icon": "$(record)"
+      },
+      {
+        "command": "codeRecorder.liveMode",
+        "title": "Code Recorder: Attach Live Mode (DAP)",
+        "icon": "$(debug-alt)"
+      },
+      {
+        "command": "codeRecorder.openTimeline",
+        "title": "Code Recorder: Open Timeline",
+        "icon": "$(timeline-view-icon)"
+      },
+      {
+        "command": "codeRecorder.playPause",
+        "title": "Code Recorder: Play / Pause",
+        "icon": "$(play)"
+      },
+      {
+        "command": "codeRecorder.stop",
+        "title": "Code Recorder: Stop",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "codeRecorder.setSpeed",
+        "title": "Code Recorder: Set Playback Speed"
+      },
+      {
+        "command": "codeRecorder.playPauseKeyboard",
+        "title": "Code Recorder: Play / Pause (Keyboard)"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "codeRecorder.playPauseKeyboard",
+        "key": "ctrl+shift+space",
+        "mac": "cmd+shift+space",
+        "when": "editorFocus || webviewFocus"
+      },
+      {
+        "command": "codeRecorder.recordPython",
+        "key": "ctrl+shift+r",
+        "mac": "cmd+shift+r",
+        "when": "editorLangId == python"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "codeRecorder.recordPython",
+          "when": "resourceExtname == .py",
+          "group": "navigation"
+        },
+        {
+          "command": "codeRecorder.recordJS",
+          "when": "resourceExtname =~ /\\.(js|ts|mjs|cjs)$/",
+          "group": "navigation"
+        }
+      ]
+    },
+    "views": {
+      "explorer": [
+        {
+          "type": "webview",
+          "id": "codeRecorder.timeline",
+          "name": "Code Recorder Timeline"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Code Recorder",
+      "properties": {
+        "codeRecorder.pythonPath": {
+          "type": "string",
+          "default": "python",
+          "description": "Path to the Python executable used for recording."
+        },
+        "codeRecorder.nodePath": {
+          "type": "string",
+          "default": "node",
+          "description": "Path to the Node.js executable used for recording."
+        },
+        "codeRecorder.defaultSpeed": {
+          "type": "number",
+          "default": 1,
+          "description": "Default playback speed multiplier."
+        },
+        "codeRecorder.maxEventsPerTrace": {
+          "type": "number",
+          "default": 100000,
+          "description": "Maximum number of trace events to collect per run."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "node esbuild.js --production",
+    "build": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "@typescript-eslint/eslint-plugin": "^6.19.0",
+    "@typescript-eslint/parser": "^6.19.0",
+    "esbuild": "^0.20.0",
+    "eslint": "^8.56.0",
+    "typescript": "^5.3.3"
+  }
+}
