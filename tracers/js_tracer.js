@@ -319,7 +319,7 @@ Module.prototype._compile = function (content, filename) {
   try {
     this.exports = instrumentExports(this.exports, absFile, depthRef);
   } catch (err) {
-    process.stderr.write(`[code-recorder] Failed to instrument ${absFile}: ${err.message}\n`);
+    process.stderr.write(`[code-replay] Failed to instrument ${absFile}: ${err.message}\n`);
   }
 
   return this.exports;

@@ -1,6 +1,6 @@
 {
-  "name": "code-recorder",
-  "displayName": "Code Recorder",
+  "name": "code-replay",
+  "displayName": "Code Replay",
   "description": "Record and replay code execution with function highlights, variable decorations, and a timeline panel.",
   "version": "0.1.0",
   "publisher": "fridec13",
@@ -15,63 +15,63 @@
   },
   "activationEvents": [
     "onStartupFinished",
-    "onCommand:codeRecorder.recordPython",
-    "onCommand:codeRecorder.recordJS",
-    "onCommand:codeRecorder.liveMode",
-    "onCommand:codeRecorder.openTimeline",
-    "onView:codeRecorder.timeline"
+    "onCommand:codeReplay.recordPython",
+    "onCommand:codeReplay.recordJS",
+    "onCommand:codeReplay.liveMode",
+    "onCommand:codeReplay.openTimeline",
+    "onView:codeReplay.timeline"
   ],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "codeRecorder.recordPython",
-        "title": "Code Recorder: Record Python File",
+        "command": "codeReplay.recordPython",
+        "title": "Code Replay: Record Python File",
         "icon": "$(record)"
       },
       {
-        "command": "codeRecorder.recordJS",
-        "title": "Code Recorder: Record JS/TS File",
+        "command": "codeReplay.recordJS",
+        "title": "Code Replay: Record JS/TS File",
         "icon": "$(record)"
       },
       {
-        "command": "codeRecorder.liveMode",
-        "title": "Code Recorder: Attach Live Mode (DAP)",
+        "command": "codeReplay.liveMode",
+        "title": "Code Replay: Attach Live Mode (DAP)",
         "icon": "$(debug-alt)"
       },
       {
-        "command": "codeRecorder.openTimeline",
-        "title": "Code Recorder: Open Timeline",
+        "command": "codeReplay.openTimeline",
+        "title": "Code Replay: Open Timeline",
         "icon": "$(timeline-view-icon)"
       },
       {
-        "command": "codeRecorder.playPause",
-        "title": "Code Recorder: Play / Pause",
+        "command": "codeReplay.playPause",
+        "title": "Code Replay: Play / Pause",
         "icon": "$(play)"
       },
       {
-        "command": "codeRecorder.stop",
-        "title": "Code Recorder: Stop",
+        "command": "codeReplay.stop",
+        "title": "Code Replay: Stop",
         "icon": "$(debug-stop)"
       },
       {
-        "command": "codeRecorder.setSpeed",
-        "title": "Code Recorder: Set Playback Speed"
+        "command": "codeReplay.setSpeed",
+        "title": "Code Replay: Set Playback Speed"
       },
       {
-        "command": "codeRecorder.playPauseKeyboard",
-        "title": "Code Recorder: Play / Pause (Keyboard)"
+        "command": "codeReplay.playPauseKeyboard",
+        "title": "Code Replay: Play / Pause (Keyboard)"
       }
     ],
     "keybindings": [
       {
-        "command": "codeRecorder.playPauseKeyboard",
+        "command": "codeReplay.playPauseKeyboard",
         "key": "ctrl+shift+space",
         "mac": "cmd+shift+space",
         "when": "editorFocus || webviewFocus"
       },
       {
-        "command": "codeRecorder.recordPython",
+        "command": "codeReplay.recordPython",
         "key": "ctrl+shift+r",
         "mac": "cmd+shift+r",
         "when": "editorLangId == python"
@@ -80,12 +80,12 @@
     "menus": {
       "editor/title": [
         {
-          "command": "codeRecorder.recordPython",
+          "command": "codeReplay.recordPython",
           "when": "resourceExtname == .py",
           "group": "navigation"
         },
         {
-          "command": "codeRecorder.recordJS",
+          "command": "codeReplay.recordJS",
           "when": "resourceExtname =~ /\\.(js|ts|mjs|cjs)$/",
           "group": "navigation"
         }
@@ -94,40 +94,40 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "codeRecorderContainer",
-          "title": "Code Recorder",
+          "id": "codeReplayContainer",
+          "title": "Code Replay",
           "icon": "media/icon.svg"
         }
       ]
     },
     "views": {
-      "codeRecorderContainer": [
+      "codeReplayContainer": [
         {
           "type": "webview",
-          "id": "codeRecorder.timeline",
-          "name": "Code Recorder Timeline"
+          "id": "codeReplay.timeline",
+          "name": "Code Replay Timeline"
         }
       ]
     },
     "configuration": {
-      "title": "Code Recorder",
+      "title": "Code Replay",
       "properties": {
-        "codeRecorder.pythonPath": {
+        "codeReplay.pythonPath": {
           "type": "string",
           "default": "python",
           "description": "Path to the Python executable used for recording."
         },
-        "codeRecorder.nodePath": {
+        "codeReplay.nodePath": {
           "type": "string",
           "default": "node",
           "description": "Path to the Node.js executable used for recording."
         },
-        "codeRecorder.defaultSpeed": {
+        "codeReplay.defaultSpeed": {
           "type": "number",
           "default": 1,
           "description": "Default playback speed multiplier."
         },
-        "codeRecorder.maxEventsPerTrace": {
+        "codeReplay.maxEventsPerTrace": {
           "type": "number",
           "default": 100000,
           "description": "Maximum number of trace events to collect per run."

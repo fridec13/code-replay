@@ -9,17 +9,17 @@ import { TimelinePanel } from './timelinePanel';
 import { SPEED_OPTIONS, SpeedOption } from './types';
 
 export function activate(context: vscode.ExtensionContext): void {
-  const outputChannel = vscode.window.createOutputChannel('Code Recorder');
-  outputChannel.appendLine('[Code Recorder] Activating…');
+  const outputChannel = vscode.window.createOutputChannel('Code Replay');
+  outputChannel.appendLine('[Code Replay] Activating…');
 
   try {
     _activate(context, outputChannel);
-    outputChannel.appendLine('[Code Recorder] Activated successfully.');
+    outputChannel.appendLine('[Code Replay] Activated successfully.');
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    outputChannel.appendLine(`[Code Recorder] ACTIVATION ERROR: ${msg}`);
+    outputChannel.appendLine(`[Code Replay] ACTIVATION ERROR: ${msg}`);
     outputChannel.show(true);
-    vscode.window.showErrorMessage(`Code Recorder failed to activate: ${msg}`);
+    vscode.window.showErrorMessage(`Code Replay failed to activate: ${msg}`);
   }
 }
 
@@ -47,7 +47,7 @@ function _activate(
 
   // ── WebView provider ────────────────────────────────────────────────────────
   const panelRegistration = vscode.window.registerWebviewViewProvider(
-    'codeRecorder.timeline',
+    'codeReplay.timeline',
     timelinePanel,
     { webviewOptions: { retainContextWhenHidden: true } },
   );
@@ -56,7 +56,7 @@ function _activate(
   // ── Commands ───────────────────────────────────────────────────────────────
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('codeRecorder.recordPython', async () => {
+    vscode.commands.registerCommand('codeReplay.recordPython', async () => {
       const file = getActiveFile(['.py']);
       if (!file) return;
       await recorder.start({ targetFile: file, language: 'python' });
@@ -64,7 +64,7 @@ function _activate(
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('codeRecorder.recordJS', async () => {
+    vscode.commands.registerCommand('codeReplay.recordJS', async () => {
       const file = getActiveFile(['.js', '.ts', '.mjs', '.cjs']);
       if (!file) {
         // Prompt to pick a file
@@ -85,10 +85,10 @@ function _activate(
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('codeRecorder.liveMode', () => {
+    vscode.commands.registerCommand('codeReplay.liveMode', () => {
       if (liveBridge.isEnabled) {
         liveBridge.disable();
-        vscode.window.showInformationMessage('Code Recorder: Live mode disabled.');
+        vscode.window.showInformationMessage('Code Replay: Live mode disabled.');
       } else {
         liveBridge.enable();
       }
@@ -96,27 +96,25 @@ function _activate(
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('codeRecorder.openTimeline', () => {
-      // 'codeRecorder.timeline.focus' is VSCode's auto-generated command for
-      // the registered WebviewView with id 'codeRecorder.timeline'.
-      vscode.commands.executeCommand('codeRecorder.timeline.focus');
+    vscode.commands.registerCommand('codeReplay.openTimeline', () => {
+      vscode.commands.executeCommand('codeReplay.timeline.focus');
     }),
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('codeRecorder.playPause', () => {
+    vscode.commands.registerCommand('codeReplay.playPause', () => {
       replay.playPause();
     }),
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('codeRecorder.stop', () => {
+    vscode.commands.registerCommand('codeReplay.stop', () => {
       replay.stop();
     }),
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('codeRecorder.setSpeed', async () => {
+    vscode.commands.registerCommand('codeReplay.setSpeed', async () => {
       const items = SPEED_OPTIONS.map((s) => ({
         label: `${s}x`,
         description: s === replay.speed ? '(current)' : '',
@@ -136,8 +134,8 @@ function _activate(
     vscode.StatusBarAlignment.Right,
     100,
   );
-  statusBarItem.command = 'codeRecorder.playPause';
-  statusBarItem.tooltip = 'Code Recorder — click to play/pause';
+  statusBarItem.command = 'codeReplay.playPause';
+  statusBarItem.tooltip = 'Code Replay — click to play/pause';
   context.subscriptions.push(statusBarItem);
 
   context.subscriptions.push(
@@ -156,7 +154,7 @@ function _activate(
 
   // ── Keyboard shortcut: Ctrl+Shift+Space → play/pause ──────────────────────
   context.subscriptions.push(
-    vscode.commands.registerCommand('codeRecorder.playPauseKeyboard', () => {
+    vscode.commands.registerCommand('codeReplay.playPauseKeyboard', () => {
       replay.playPause();
     }),
   );
@@ -170,7 +168,7 @@ function getActiveFile(extensions: string[]): string | null {
   const editor = vscode.window.activeTextEditor;
   if (!editor) {
     vscode.window.showErrorMessage(
-      'Code Recorder: No active editor. Open a file first.',
+      'Code Replay: No active editor. Open a file first.',
     );
     return null;
   }
@@ -178,7 +176,7 @@ function getActiveFile(extensions: string[]): string | null {
   const ext = path.extname(file).toLowerCase();
   if (!extensions.includes(ext)) {
     vscode.window.showErrorMessage(
-      `Code Recorder: Expected ${extensions.join(' / ')} file, got ${ext}`,
+      `Code Replay: Expected ${extensions.join(' / ')} file, got ${ext}`,
     );
     return null;
   }

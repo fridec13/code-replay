@@ -1,5 +1,5 @@
 """
-Code Recorder — Python tracer.
+Code Replay — Python tracer.
 
 Usage (invoked by the VSCode extension):
     python python_tracer.py <target_script.py> [args...]
@@ -222,7 +222,7 @@ def main():
     global _start_time, _max_events, _user_only, _script_dir
 
     parser = argparse.ArgumentParser(
-        description="Code Recorder Python tracer",
+        description="Code Replay Python tracer",
         add_help=False,
     )
     parser.add_argument("script", help="Target Python script to trace")

@@ -60,7 +60,7 @@ export class Recorder {
       return;
     }
 
-    const config = vscode.workspace.getConfiguration('codeRecorder');
+    const config = vscode.workspace.getConfiguration('codeReplay');
     const maxEvents = opts.maxEvents ?? config.get<number>('maxEventsPerTrace', 100_000);
 
     this._store.clear();
@@ -69,9 +69,9 @@ export class Recorder {
     if (!cmd) return;
 
     this._outputChannel.appendLine(
-      `[Code Recorder] Starting ${opts.language} trace: ${opts.targetFile}`,
+      `[Code Replay] Starting ${opts.language} trace: ${opts.targetFile}`,
     );
-    this._outputChannel.appendLine(`[Code Recorder] Command: ${cmd.args.join(' ')}`);
+    this._outputChannel.appendLine(`[Code Replay] Command: ${cmd.args.join(' ')}`);
 
     this._process = cp.spawn(cmd.executable, cmd.args, {
       cwd: path.dirname(opts.targetFile),
@@ -95,19 +95,19 @@ export class Recorder {
     });
 
     this._process.on('error', (err) => {
-      this._outputChannel.appendLine(`[Code Recorder] Process error: ${err.message}`);
+      this._outputChannel.appendLine(`[Code Replay] Process error: ${err.message}`);
       this._outputChannel.show(true);
-      vscode.window.showErrorMessage(`Code Recorder: ${err.message}`);
+      vscode.window.showErrorMessage(`Code Replay: ${err.message}`);
       this._process = null;
     });
 
     this._process.on('close', (code) => {
-      this._outputChannel.appendLine(`[Code Recorder] Process exited with code ${code}`);
+      this._outputChannel.appendLine(`[Code Replay] Process exited with code ${code}`);
       this._process = null;
     });
 
     vscode.window.showInformationMessage(
-      `Code Recorder: Recording ${path.basename(opts.targetFile)}…`,
+      `Code Replay: Recording ${path.basename(opts.targetFile)}…`,
     );
   }
 
@@ -115,7 +115,7 @@ export class Recorder {
     if (this._process) {
       this._process.kill();
       this._process = null;
-      this._outputChannel.appendLine('[Code Recorder] Recording stopped by user.');
+      this._outputChannel.appendLine('[Code Replay] Recording stopped by user.');
     }
   }
 
@@ -123,13 +123,13 @@ export class Recorder {
     opts: RecorderOptions,
     maxEvents: number,
   ): { executable: string; args: string[] } | null {
-    const config = vscode.workspace.getConfiguration('codeRecorder');
+    const config = vscode.workspace.getConfiguration('codeReplay');
 
     if (opts.language === 'python') {
       const tracerScript = path.join(this._tracerDir, 'python_tracer.py');
       if (!fs.existsSync(tracerScript)) {
         vscode.window.showErrorMessage(
-          `Code Recorder: tracer not found at ${tracerScript}`,
+          `Code Replay: tracer not found at ${tracerScript}`,
         );
         return null;
       }
@@ -138,21 +138,21 @@ export class Recorder {
       const pythonExe = detectPython(preferred);
       if (!pythonExe) {
         const msg =
-          'Code Recorder: Python not found. Install Python or set "codeRecorder.pythonPath" in settings.';
+          'Code Replay: Python not found. Install Python or set "codeReplay.pythonPath" in settings.';
         this._outputChannel.appendLine(msg);
         this._outputChannel.show(true);
         vscode.window.showErrorMessage(msg, 'Open Settings').then((choice) => {
           if (choice === 'Open Settings') {
             vscode.commands.executeCommand(
               'workbench.action.openSettings',
-              'codeRecorder.pythonPath',
+              'codeReplay.pythonPath',
             );
           }
         });
         return null;
       }
 
-      this._outputChannel.appendLine(`[Code Recorder] Using Python: ${pythonExe}`);
+      this._outputChannel.appendLine(`[Code Replay] Using Python: ${pythonExe}`);
       const args = [tracerScript, opts.targetFile, '--max-events', String(maxEvents)];
       if (opts.allFiles) {
         args.push('--all-files');
@@ -165,7 +165,7 @@ export class Recorder {
       const tracerScript = path.join(this._tracerDir, 'js_tracer.js');
       if (!fs.existsSync(tracerScript)) {
         vscode.window.showErrorMessage(
-          `Code Recorder: tracer not found at ${tracerScript}`,
+          `Code Replay: tracer not found at ${tracerScript}`,
         );
         return null;
       }
@@ -190,7 +190,7 @@ export class Recorder {
     try {
       parsed = JSON.parse(line);
     } catch {
-      this._outputChannel.appendLine(`[Code Recorder] Non-JSON output: ${line}`);
+      this._outputChannel.appendLine(`[Code Replay] Non-JSON output: ${line}`);
       return;
     }
 
@@ -217,26 +217,26 @@ export class Recorder {
       const totalEvents = parsed['totalEvents'] as number;
       const durationMs = parsed['durationMs'] as number;
       this._outputChannel.appendLine(
-        `[Code Recorder] Done — ${totalEvents} events in ${durationMs.toFixed(1)} ms`,
+        `[Code Replay] Done — ${totalEvents} events in ${durationMs.toFixed(1)} ms`,
       );
       this._store.finalize(entryFile);
       vscode.window.showInformationMessage(
-        `Code Recorder: Captured ${totalEvents} events (${durationMs.toFixed(0)} ms). Open Timeline to replay.`,
+        `Code Replay: Captured ${totalEvents} events (${durationMs.toFixed(0)} ms). Open Timeline to replay.`,
       );
       return;
     }
 
     if (type === 'error') {
       const msg = parsed['message'] as string;
-      this._outputChannel.appendLine(`[Code Recorder] Script error:\n${msg}`);
-      vscode.window.showErrorMessage(`Code Recorder: Script error — see Output panel.`);
+      this._outputChannel.appendLine(`[Code Replay] Script error:\n${msg}`);
+      vscode.window.showErrorMessage(`Code Replay: Script error — see Output panel.`);
       return;
     }
 
     if (type === 'limit_reached') {
       const max = parsed['max'] as number;
       vscode.window.showWarningMessage(
-        `Code Recorder: Event limit reached (${max}). Increase codeRecorder.maxEventsPerTrace to capture more.`,
+        `Code Replay: Event limit reached (${max}). Increase codeReplay.maxEventsPerTrace to capture more.`,
       );
       return;
     }

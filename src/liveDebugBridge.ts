@@ -13,7 +13,7 @@ import { EventStore } from './eventStore';
  *    the EventStore, so the same replay infrastructure can visualize live
  *    stepping just like a recorded trace.
  *
- * The user activates this by running "Code Recorder: Attach Live Mode (DAP)"
+ * The user activates this by running "Code Replay: Attach Live Mode (DAP)"
  * which simply enables the factory.  Any subsequent debug session (already
  * started or newly launched) will be tracked.
  */
@@ -46,9 +46,9 @@ export class LiveDebugBridge implements vscode.Disposable {
       createDebugAdapterTracker: (session) => this._createTracker(session),
     });
 
-    this._outputChannel.appendLine('[Code Recorder] Live mode enabled — attach a debug session.');
+    this._outputChannel.appendLine('[Code Replay] Live mode enabled — attach a debug session.');
     vscode.window.showInformationMessage(
-      'Code Recorder: Live mode active. Start or resume a debug session to begin capturing.',
+      'Code Replay: Live mode active. Start or resume a debug session to begin capturing.',
     );
   }
 
@@ -56,25 +56,25 @@ export class LiveDebugBridge implements vscode.Disposable {
     this._enabled = false;
     this._registration?.dispose();
     this._registration = null;
-    this._outputChannel.appendLine('[Code Recorder] Live mode disabled.');
+    this._outputChannel.appendLine('[Code Replay] Live mode disabled.');
   }
 
   private _createTracker(session: vscode.DebugSession): vscode.DebugAdapterTracker {
     this._outputChannel.appendLine(
-      `[Code Recorder] Tracking debug session: ${session.name} (${session.type})`,
+      `[Code Replay] Tracking debug session: ${session.name} (${session.type})`,
     );
 
     return {
       onDidSendMessage: (message: DapMessage) => {
         this._onDapMessage(session, message).catch((err) => {
-          this._outputChannel.appendLine(`[Code Recorder] Live bridge error: ${err}`);
+          this._outputChannel.appendLine(`[Code Replay] Live bridge error: ${err}`);
         });
       },
       onError: (error) => {
-        this._outputChannel.appendLine(`[Code Recorder] DAP error: ${error}`);
+        this._outputChannel.appendLine(`[Code Replay] DAP error: ${error}`);
       },
       onExit: () => {
-        this._outputChannel.appendLine('[Code Recorder] Debug session ended.');
+        this._outputChannel.appendLine('[Code Replay] Debug session ended.');
         this._store.finalize(session.workspaceFolder?.uri.fsPath ?? '');
       },
     };

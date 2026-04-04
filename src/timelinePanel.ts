@@ -132,7 +132,7 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
              style-src 'unsafe-inline';
              script-src 'nonce-${nonce}';">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Code Recorder Timeline</title>
+  <title>Code Replay Timeline</title>
   <style>
     :root {
       --bg:        var(--vscode-sideBar-background, #1e1e1e);
