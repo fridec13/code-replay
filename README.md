@@ -113,7 +113,7 @@ npm run watch
 
 1. `.cpp` / `.c` / `.cc` / `.cxx` 파일을 열면 제목 표시줄에 ▶ 버튼이 나타납니다.
 2. 버튼 클릭 또는 명령 팔레트 → `Code Replay: Record C/C++ File`.
-3. 확장이 자동으로 `g++ -g -O0`으로 컴파일 후 GDB로 추적합니다.
+3. 확장이 같은 폴더의 `.cpp` / `.c` / `.cc` / `.cxx` 파일을 **모두** `g++ -g -O0`으로 컴파일 후 GDB로 추적합니다.
 4. 완료 알림 이후 타임라인 패널에서 재생합니다.
 
 > **C++ 사전 요건**: `g++`와 `gdb`가 PATH에 있어야 합니다.  
@@ -254,7 +254,7 @@ Windows MinGW/MSYS2 예시:
 
 - **Python**: `sys.settrace`는 C 확장 모듈 내부(`numpy`, `pandas` 등)는 추적하지 않습니다. 순수 Python 코드만 추적됩니다.
 - **JavaScript**: `--require` 방식으로 주입하므로 ES 모듈(`import`/`export`)을 사용하는 파일은 CommonJS로 변환되어 있어야 합니다. `.mjs` 파일은 지원이 제한적입니다.
-- **C++ — 단일 파일**: 현재 버전은 `.cpp` 단일 파일만 자동 컴파일합니다. 여러 파일로 구성된 프로젝트는 직접 `g++ -g -O0`으로 바이너리를 빌드한 뒤 GDB + cpp_tracer.py로 수동 실행하거나, 추후 `compile_commands.json` 지원을 기다려 주세요.
+- **C++ — 멀티 파일**: 같은 폴더 안의 `.cpp` / `.c` / `.cc` / `.cxx` 파일을 모두 한번에 컴파일합니다. CMake / Makefile 등 별도 빌드 시스템을 사용하는 프로젝트는 직접 바이너리를 빌드한 뒤 GDB + `cpp_tracer.py`로 수동 실행해야 합니다.
 - **C++ — 속도**: GDB `step` 기반이라 Python보다 추적이 느릴 수 있습니다. `codeReplay.maxEventsPerTrace`를 낮춰 루프가 많은 코드의 무한 추적을 방지하세요.
 - **대규모 코드**: 이벤트가 `maxEventsPerTrace`를 초과하면 기록이 중단됩니다.
 - **Live Mode**: DAP `stopped` 이벤트에만 반응합니다. 브레이크포인트 없이 자유 실행 중인 경우는 캡처되지 않습니다.
