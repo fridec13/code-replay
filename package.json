@@ -8,6 +8,11 @@
     "vscode": "^1.85.0"
   },
   "categories": ["Debuggers", "Visualization"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/YOUR_USERNAME/coderecorder"
+  },
   "activationEvents": [
     "onStartupFinished",
     "onCommand:codeRecorder.recordPython",

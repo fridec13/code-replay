@@ -298,6 +298,16 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
       background: rgba(86,156,214,0.15);
     }
     .split-duration { opacity: 0.5; font-size: 10px; display: block; }
+    .split-seq {
+      display: inline-block;
+      min-width: 24px;
+      font-size: 9px;
+      opacity: 0.55;
+      color: var(--accent2);
+      margin-right: 4px;
+      flex-shrink: 0;
+    }
+    .split-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
     /* ── Timeline canvas area ────────────────────────────────── */
     #timeline-area { flex: 1; overflow: auto; position: relative; min-width: 0; }
@@ -403,6 +413,7 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
   let status = { state: 'idle', currentEventId: 0, speed: 1, totalEvents: 0,
                  startMode: 'user', userCodeStartEventId: 0 };
   let segmentColors = {};
+  let segSeqNums = {};   // seg.key -> 1-based call order number
   let colorIndex = 0;
   let prevVariables = {};   // variables from the previous event
 
@@ -466,6 +477,7 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
     scrubber.value = String(t.userCodeStartEventId);
 
     assignColors(t.segments);
+    assignSeqNums(t.segments);
     renderCanvas();
     renderSplits(t.segments);
     updateVarTable({}, {});
@@ -492,6 +504,13 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
         colorIndex++;
       }
     });
+  }
+
+  function assignSeqNums(segments) {
+    segSeqNums = {};
+    // Sort by startTimestamp to assign call-order numbers
+    const sorted = [...segments].sort((a, b) => a.startTimestamp - b.startTimestamp);
+    sorted.forEach((seg, i) => { segSeqNums[seg.key] = i + 1; });
   }
 
   // ── Status updates ────────────────────────────────────────────
@@ -655,8 +674,10 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
         ctx.fillStyle = '#fff';
         ctx.font = '10px monospace';
         ctx.textBaseline = 'middle';
-        const label = seg.name.length > 18 ? seg.name.slice(0, 16) + '..' : seg.name;
-        ctx.fillText(label, x + 4, y + TRACK_H / 2, w - 8);
+        const seqN = segSeqNums[seg.key] ? '#' + segSeqNums[seg.key] + ' ' : '';
+        const maxNameLen = Math.max(0, 18 - seqN.length);
+        const namePart = seg.name.length > maxNameLen ? seg.name.slice(0, maxNameLen - 2) + '..' : seg.name;
+        ctx.fillText(seqN + namePart, x + 4, y + TRACK_H / 2, w - 8);
       }
 
       seg._bounds = { x, y, w, h: TRACK_H };
@@ -672,15 +693,28 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
 
     sorted.forEach((seg) => {
       const dur = seg.endTimestamp - seg.startTimestamp;
+      const seqN = segSeqNums[seg.key];
       const el = document.createElement('div');
       el.className = 'split-item';
       el.dataset.segKey = seg.key;
       el.style.borderLeftColor = segmentColors[seg.name] || '#888';
-      el.textContent = seg.name;
+
+      // Sequence badge + name
+      const seqSpan = document.createElement('span');
+      seqSpan.className = 'split-seq';
+      seqSpan.textContent = seqN ? '#' + seqN : '';
+      el.appendChild(seqSpan);
+
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'split-name';
+      nameSpan.textContent = seg.name;
+      el.appendChild(nameSpan);
+
       const durEl = document.createElement('span');
       durEl.className = 'split-duration';
       durEl.textContent = formatDuration(dur);
       el.appendChild(durEl);
+
       el.addEventListener('click', () => {
         vscode.postMessage({ type: 'seekToSegment', segmentKey: seg.key });
       });
@@ -733,7 +767,9 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
       tooltip.style.display = 'block';
       tooltip.style.left = (e.clientX + 12) + 'px';
       tooltip.style.top  = (e.clientY - 8) + 'px';
-      tooltip.textContent = hit.name + '()  ' + formatDuration(hit.endTimestamp - hit.startTimestamp) +
+      const seqN = segSeqNums[hit.key] ? ' #' + segSeqNums[hit.key] : '';
+      tooltip.textContent = hit.name + '()' + seqN + '  ' +
+                            formatDuration(hit.endTimestamp - hit.startTimestamp) +
                             '  depth=' + hit.callDepth;
     } else {
       tooltip.style.display = 'none';

@@ -14,13 +14,15 @@ const VAR_DISPLAY_MAX = 6;
  *  4. Shows local variables as dimmed inline text after the current line.
  */
 export class EditorDecorator implements vscode.Disposable {
-  // Active-line highlight (blue background, always visible while replaying)
+  // Active-line highlight — bright yellow, always visible while replaying
   private readonly _activeLineType = vscode.window.createTextEditorDecorationType({
     isWholeLine: true,
-    backgroundColor: new vscode.ThemeColor('editor.wordHighlightBackground'),
-    borderWidth: '0 0 0 3px',
+    backgroundColor: 'rgba(255, 215, 0, 0.28)',
+    borderWidth: '0 0 0 4px',
     borderStyle: 'solid',
-    borderColor: new vscode.ThemeColor('terminal.ansiBlue'),
+    borderColor: new vscode.ThemeColor('editorWarning.foreground'),
+    overviewRulerColor: new vscode.ThemeColor('editorWarning.foreground'),
+    overviewRulerLane: vscode.OverviewRulerLane.Left,
   });
 
   // Flash decoration for function-call lines (gold, fades after FLASH_DURATION_MS)
