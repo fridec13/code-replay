@@ -273,11 +273,20 @@ export class Recorder {
       return null;
     }
 
+    const sourceDir = path.dirname(sourceFile);
+    const cppFiles = fs
+      .readdirSync(sourceDir)
+      .filter((f) => /\.(cpp|cc|cxx|c)$/i.test(f))
+      .map((f) => path.join(sourceDir, f));
+
     const tmpBin = path.join(os.tmpdir(), `cr_cpp_${Date.now()}${process.platform === 'win32' ? '.exe' : ''}`);
-    this._outputChannel.appendLine(`[Code Replay] Compiling: ${gppExe} -g -O0 -o ${tmpBin} ${sourceFile}`);
+    this._outputChannel.appendLine(
+      `[Code Replay] Compiling ${cppFiles.length} file(s) in ${sourceDir}:\n` +
+      cppFiles.map((f) => `  ${path.basename(f)}`).join('\n'),
+    );
 
     return new Promise((resolve) => {
-      const proc = cp.spawn(gppExe, ['-g', '-O0', '-o', tmpBin, sourceFile], {
+      const proc = cp.spawn(gppExe, ['-g', '-O0', '-o', tmpBin, ...cppFiles], {
         cwd: path.dirname(sourceFile),
         stdio: ['ignore', 'pipe', 'pipe'],
       });
