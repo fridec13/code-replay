@@ -2,7 +2,7 @@
   "name": "code-replay",
   "displayName": "Code Replay",
   "description": "Record and replay code execution with function highlights, variable decorations, and a timeline panel.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "fridec13",
   "engines": {
     "vscode": "^1.85.0"
