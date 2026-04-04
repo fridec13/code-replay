@@ -148,7 +148,7 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: var(--vscode-font-family, monospace);
-      font-size: 12px;
+      font-size: 13px;
       background: var(--bg);
       color: var(--fg);
       height: 100vh;
@@ -171,26 +171,26 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
       background: var(--btn-bg);
       color: var(--btn-fg);
       border: none;
-      padding: 3px 7px;
+      padding: 4px 8px;
       cursor: pointer;
       border-radius: 3px;
-      font-size: 11px;
+      font-size: 12px;
       font-family: inherit;
     }
     button:hover { background: var(--btn-hover); }
     button.active { outline: 2px solid var(--accent2); }
-    #play-btn { min-width: 52px; }
+    #play-btn { min-width: 56px; }
     .speed-group { display: flex; gap: 2px; }
-    .speed-btn { padding: 3px 5px; background: var(--track-bg); color: var(--vscode-foreground, #ccc); }
+    .speed-btn { padding: 4px 6px; background: var(--track-bg); color: var(--vscode-foreground, #ccc); }
     .speed-btn.active { background: var(--btn-bg); color: var(--btn-fg); }
     .mode-group { display: flex; gap: 2px; margin-left: auto; }
-    .mode-btn { padding: 2px 6px; background: var(--track-bg); font-size: 10px; color: var(--vscode-foreground, #ccc); }
+    .mode-btn { padding: 3px 7px; background: var(--track-bg); font-size: 11px; color: var(--vscode-foreground, #ccc); }
     .mode-btn.active { background: #1a4a1a; outline: 1px solid #4ec94e; color: #9ee89e; }
 
     /* ── Speed info ────────────────────────────────────────────── */
     #speed-info {
-      padding: 2px 8px;
-      font-size: 10px;
+      padding: 3px 8px;
+      font-size: 11px;
       opacity: 0.6;
       border-bottom: 1px solid var(--border);
       flex-shrink: 0;
@@ -212,8 +212,8 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
       overflow-y: auto;
     }
     #var-section h4 {
-      padding: 3px 8px;
-      font-size: 10px;
+      padding: 4px 8px;
+      font-size: 11px;
       text-transform: uppercase;
       letter-spacing: 0.05em;
       opacity: 0.6;
@@ -225,21 +225,21 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
     #var-table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 11px;
+      font-size: 12px;
     }
     #var-table th {
-      padding: 2px 6px;
+      padding: 3px 6px;
       text-align: left;
       opacity: 0.5;
       font-weight: normal;
-      font-size: 10px;
+      font-size: 11px;
       border-bottom: 1px solid var(--border);
       position: sticky;
-      top: 22px;
+      top: 24px;
       background: var(--bg);
     }
     #var-table td {
-      padding: 2px 6px;
+      padding: 3px 6px;
       vertical-align: top;
       border-bottom: 1px solid rgba(255,255,255,0.04);
       font-family: monospace;
@@ -272,8 +272,8 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
       flex-shrink: 0;
     }
     #splits h3 {
-      padding: 4px 8px;
-      font-size: 10px;
+      padding: 5px 8px;
+      font-size: 11px;
       text-transform: uppercase;
       opacity: 0.6;
       letter-spacing: 0.05em;
@@ -283,25 +283,25 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
       background: var(--bg);
     }
     .split-item {
-      padding: 4px 8px;
+      padding: 5px 8px;
       cursor: pointer;
       border-left: 3px solid transparent;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      font-size: 11px;
-      line-height: 1.4;
+      font-size: 12px;
+      line-height: 1.5;
     }
     .split-item:hover { background: rgba(255,255,255,0.06); }
     .split-item.active {
       border-left-color: var(--accent);
       background: rgba(86,156,214,0.15);
     }
-    .split-duration { opacity: 0.5; font-size: 10px; display: block; }
+    .split-duration { opacity: 0.5; font-size: 11px; display: block; }
     .split-seq {
       display: inline-block;
-      min-width: 24px;
-      font-size: 9px;
+      min-width: 26px;
+      font-size: 10px;
       opacity: 0.55;
       color: var(--accent2);
       margin-right: 4px;
@@ -346,11 +346,11 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
       display: flex;
       align-items: center;
       gap: 6px;
-      padding: 4px 8px;
+      padding: 5px 8px;
       cursor: pointer;
       user-select: none;
       flex-shrink: 0;
-      font-size: 10px;
+      font-size: 11px;
       text-transform: uppercase;
       letter-spacing: 0.05em;
       opacity: 0.65;
@@ -362,13 +362,13 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
       flex: 1;
       overflow-y: auto;
       font-family: monospace;
-      font-size: 11px;
+      font-size: 12px;
     }
     .con-line {
       display: flex;
       align-items: baseline;
       gap: 6px;
-      padding: 1px 8px 1px 20px;
+      padding: 2px 8px 2px 20px;
       border-left: 3px solid transparent;
       opacity: 0.55;
       white-space: pre-wrap;
@@ -381,7 +381,7 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
       background: rgba(220,220,170,0.1);
     }
     .con-line.con-future { opacity: 0.28; }
-    .con-level { font-size: 9px; opacity: 0.5; flex-shrink: 0; }
+    .con-level { font-size: 10px; opacity: 0.5; flex-shrink: 0; }
     .con-level.warn  { color: #e8c070; opacity: 0.8; }
     .con-level.error { color: #f44747; opacity: 0.9; }
 
@@ -795,7 +795,7 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
 
       if (w >= LABEL_MIN) {
         ctx.fillStyle = '#fff';
-        ctx.font = '10px monospace';
+        ctx.font = '11px monospace';
         ctx.textBaseline = 'middle';
         const seqN = segSeqNums[seg.key] ? '#' + segSeqNums[seg.key] + ' ' : '';
         const maxNameLen = Math.max(0, 18 - seqN.length);

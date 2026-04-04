@@ -3,7 +3,7 @@
   "displayName": "Code Recorder",
   "description": "Record and replay code execution with function highlights, variable decorations, and a timeline panel.",
   "version": "0.1.0",
-  "publisher": "code-recorder",
+  "publisher": "fridec13",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -11,7 +11,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/YOUR_USERNAME/coderecorder"
+    "url": "https://github.com/fridec13/code-recorder"
   },
   "activationEvents": [
     "onStartupFinished",
