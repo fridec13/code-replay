@@ -85,6 +85,14 @@ function _activate(
   );
 
   context.subscriptions.push(
+    vscode.commands.registerCommand('codeReplay.recordCpp', async () => {
+      const file = getActiveFile(['.cpp', '.c', '.cc', '.cxx']);
+      if (!file) return;
+      await recorder.start({ targetFile: file, language: 'cpp' });
+    }),
+  );
+
+  context.subscriptions.push(
     vscode.commands.registerCommand('codeReplay.liveMode', () => {
       if (liveBridge.isEnabled) {
         liveBridge.disable();

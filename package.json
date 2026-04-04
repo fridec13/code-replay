@@ -17,6 +17,7 @@
     "onStartupFinished",
     "onCommand:codeReplay.recordPython",
     "onCommand:codeReplay.recordJS",
+    "onCommand:codeReplay.recordCpp",
     "onCommand:codeReplay.liveMode",
     "onCommand:codeReplay.openTimeline",
     "onView:codeReplay.timeline"
@@ -32,6 +33,11 @@
       {
         "command": "codeReplay.recordJS",
         "title": "Code Replay: Record JS/TS File",
+        "icon": "$(record)"
+      },
+      {
+        "command": "codeReplay.recordCpp",
+        "title": "Code Replay: Record C/C++ File",
         "icon": "$(record)"
       },
       {
@@ -88,6 +94,11 @@
           "command": "codeReplay.recordJS",
           "when": "resourceExtname =~ /\\.(js|ts|mjs|cjs)$/",
           "group": "navigation"
+        },
+        {
+          "command": "codeReplay.recordCpp",
+          "when": "resourceExtname =~ /\\.(cpp|c|cc|cxx)$/",
+          "group": "navigation"
         }
       ]
     },
@@ -131,6 +142,16 @@
           "type": "number",
           "default": 100000,
           "description": "Maximum number of trace events to collect per run."
+        },
+        "codeReplay.gppPath": {
+          "type": "string",
+          "default": "g++",
+          "description": "Path to the g++ compiler used for C/C++ recording. Set this if g++ is not on your PATH (e.g. C:\\msys64\\mingw64\\bin\\g++.exe)."
+        },
+        "codeReplay.gdbPath": {
+          "type": "string",
+          "default": "gdb",
+          "description": "Path to the GDB debugger used for C/C++ recording. Set this if gdb is not on your PATH (e.g. C:\\msys64\\mingw64\\bin\\gdb.exe)."
         }
       }
     }

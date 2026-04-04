@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
 import { TraceEvent, OutputLog } from './types';
 import { EventStore } from './eventStore';
 
@@ -10,7 +11,22 @@ const PYTHON_CANDIDATES = process.platform === 'win32'
   ? ['py', 'python', 'python3']
   : ['python3', 'python'];
 
+const GPP_CANDIDATES = ['g++', 'g++-14', 'g++-13', 'g++-12', 'g++-11'];
+const GDB_CANDIDATES = ['gdb'];
+
 /** Synchronously probe candidates until one succeeds. Returns null if none found. */
+function detectExecutable(candidates: string[], versionFlag = '--version'): string | null {
+  for (const exe of candidates) {
+    try {
+      const result = cp.spawnSync(exe, [versionFlag], { timeout: 3000, encoding: 'utf8' });
+      if (result.status === 0) return exe;
+    } catch {
+      // not found, try next
+    }
+  }
+  return null;
+}
+
 function detectPython(preferred?: string): string | null {
   const candidates = preferred ? [preferred, ...PYTHON_CANDIDATES] : PYTHON_CANDIDATES;
   for (const exe of candidates) {
@@ -26,7 +42,7 @@ function detectPython(preferred?: string): string | null {
   return null;
 }
 
-export type Language = 'python' | 'javascript';
+export type Language = 'python' | 'javascript' | 'cpp';
 
 export interface RecorderOptions {
   targetFile: string;
@@ -34,6 +50,8 @@ export interface RecorderOptions {
   maxEvents?: number;
   /** When true, trace stdlib/site-packages too. Default: false (user code only) */
   allFiles?: boolean;
+  /** Internal: path to the compiled binary (set by _compileCpp before _buildCommand) */
+  _compiledBinary?: string;
 }
 
 export class Recorder {
@@ -56,7 +74,7 @@ export class Recorder {
 
   async start(opts: RecorderOptions): Promise<void> {
     if (this._process) {
-      vscode.window.showWarningMessage('Code Recorder: A recording is already in progress.');
+      vscode.window.showWarningMessage('Code Replay: A recording is already in progress.');
       return;
     }
 
@@ -65,17 +83,24 @@ export class Recorder {
 
     this._store.clear();
 
+    // C++: compile source file to a temporary binary first
+    if (opts.language === 'cpp') {
+      const binPath = await this._compileCpp(opts.targetFile, config);
+      if (!binPath) return;
+      opts = { ...opts, _compiledBinary: binPath };
+    }
+
     const cmd = this._buildCommand(opts, maxEvents);
     if (!cmd) return;
 
     this._outputChannel.appendLine(
       `[Code Replay] Starting ${opts.language} trace: ${opts.targetFile}`,
     );
-    this._outputChannel.appendLine(`[Code Replay] Command: ${cmd.args.join(' ')}`);
+    this._outputChannel.appendLine(`[Code Replay] Command: ${cmd.executable} ${cmd.args.join(' ')}`);
 
     this._process = cp.spawn(cmd.executable, cmd.args, {
       cwd: path.dirname(opts.targetFile),
-      env: { ...process.env },
+      env: { ...process.env, ...(cmd.env ?? {}) },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
@@ -122,7 +147,7 @@ export class Recorder {
   private _buildCommand(
     opts: RecorderOptions,
     maxEvents: number,
-  ): { executable: string; args: string[] } | null {
+  ): { executable: string; args: string[]; env?: Record<string, string> } | null {
     const config = vscode.workspace.getConfiguration('codeReplay');
 
     if (opts.language === 'python') {
@@ -181,7 +206,110 @@ export class Recorder {
       };
     }
 
+    if (opts.language === 'cpp') {
+      const tracerScript = path.join(this._tracerDir, 'cpp_tracer.py');
+      if (!fs.existsSync(tracerScript)) {
+        vscode.window.showErrorMessage(
+          `Code Replay: C++ tracer not found at ${tracerScript}`,
+        );
+        return null;
+      }
+
+      const preferredGdb = config.get<string>('gdbPath') || undefined;
+      const gdbCandidates = preferredGdb ? [preferredGdb, ...GDB_CANDIDATES] : GDB_CANDIDATES;
+      const gdbExe = detectExecutable(gdbCandidates);
+      if (!gdbExe) {
+        const msg = 'Code Replay: GDB not found. Install GDB (MinGW/MSYS2) or set "codeReplay.gdbPath" in settings.';
+        this._outputChannel.appendLine(msg);
+        this._outputChannel.show(true);
+        vscode.window.showErrorMessage(msg, 'Open Settings').then((choice) => {
+          if (choice === 'Open Settings') {
+            vscode.commands.executeCommand('workbench.action.openSettings', 'codeReplay.gdbPath');
+          }
+        });
+        return null;
+      }
+
+      const compiledBinary = opts._compiledBinary!;
+      this._outputChannel.appendLine(`[Code Replay] Using GDB: ${gdbExe}`);
+      this._outputChannel.appendLine(`[Code Replay] Binary: ${compiledBinary}`);
+
+      const sourceDir = path.dirname(opts.targetFile).toLowerCase();
+
+      return {
+        executable: gdbExe,
+        args: ['--batch', '-x', tracerScript, '--args', compiledBinary],
+        env: {
+          CR_MAX_EVENTS: String(maxEvents),
+          CR_SOURCE_DIR: sourceDir,
+        },
+      };
+    }
+
     return null;
+  }
+
+  /**
+   * Compile a C++ source file with g++ -g -O0 to a temporary binary.
+   * Returns the binary path on success, or null on failure.
+   */
+  private async _compileCpp(
+    sourceFile: string,
+    config: vscode.WorkspaceConfiguration,
+  ): Promise<string | null> {
+    const preferredGpp = config.get<string>('gppPath') || undefined;
+    const gppCandidates = preferredGpp ? [preferredGpp, ...GPP_CANDIDATES] : GPP_CANDIDATES;
+    const gppExe = detectExecutable(gppCandidates);
+
+    if (!gppExe) {
+      const msg = 'Code Replay: g++ not found. Install g++ (MinGW/MSYS2) or set "codeReplay.gppPath" in settings.';
+      this._outputChannel.appendLine(msg);
+      this._outputChannel.show(true);
+      vscode.window.showErrorMessage(msg, 'Open Settings').then((choice) => {
+        if (choice === 'Open Settings') {
+          vscode.commands.executeCommand('workbench.action.openSettings', 'codeReplay.gppPath');
+        }
+      });
+      return null;
+    }
+
+    const tmpBin = path.join(os.tmpdir(), `cr_cpp_${Date.now()}${process.platform === 'win32' ? '.exe' : ''}`);
+    this._outputChannel.appendLine(`[Code Replay] Compiling: ${gppExe} -g -O0 -o ${tmpBin} ${sourceFile}`);
+
+    return new Promise((resolve) => {
+      const proc = cp.spawn(gppExe, ['-g', '-O0', '-o', tmpBin, sourceFile], {
+        cwd: path.dirname(sourceFile),
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+
+      let stderr = '';
+      proc.stderr?.on('data', (chunk: Buffer) => {
+        stderr += chunk.toString('utf8');
+      });
+
+      proc.on('error', (err) => {
+        this._outputChannel.appendLine(`[Code Replay] Compile error: ${err.message}`);
+        this._outputChannel.show(true);
+        vscode.window.showErrorMessage(`Code Replay: Compile failed — ${err.message}`);
+        resolve(null);
+      });
+
+      proc.on('close', (code) => {
+        if (stderr) {
+          this._outputChannel.appendLine(`[g++ stderr]\n${stderr.trim()}`);
+        }
+        if (code !== 0) {
+          this._outputChannel.show(true);
+          vscode.window.showErrorMessage(
+            `Code Replay: g++ exited with code ${code}. See Output panel for details.`,
+          );
+          resolve(null);
+        } else {
+          this._outputChannel.appendLine(`[Code Replay] Compile OK → ${tmpBin}`);
+          resolve(tmpBin);
+        }
+      });
+    });
   }
 
   private _handleLine(line: string, entryFile: string): void {

@@ -6,5 +6,9 @@ tsconfig.json
 .eslintrc.json
 **/*.map
 **/*.ts
+**/__pycache__/**
+**/*.pyc
+test_project/**
+test_dfs.py
 !dist/**
 !tracers/**
