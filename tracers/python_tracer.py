@@ -35,6 +35,10 @@ _stopped = False
 _user_only: bool = True      # set in main()
 _script_dir: str = ''        # set in main()
 
+# Save the real stdout at import time; _emit always uses this directly
+# so that our CaptureWriter (installed later) never causes recursion.
+_real_stdout = sys.stdout
+
 
 def _repr_safe(value) -> str:
     """Return a short, safe string representation of a value."""
@@ -59,12 +63,57 @@ def _collect_locals(frame) -> dict[str, str]:
 
 
 def _emit(event: dict) -> None:
-    """Write a single event JSON line to stdout immediately."""
+    """Write a single event JSON line to the real stdout immediately."""
     try:
-        sys.stdout.write(json.dumps(event, ensure_ascii=False) + "\n")
-        sys.stdout.flush()
+        _real_stdout.write(json.dumps(event, ensure_ascii=False) + "\n")
+        _real_stdout.flush()
     except Exception:
         pass
+
+
+class _CaptureWriter:
+    """Replaces sys.stdout during script execution to intercept print() calls."""
+
+    def __init__(self) -> None:
+        self._buf = ""
+
+    def write(self, text: str) -> int:
+        if not text:
+            return 0
+        self._buf += text
+        # Flush complete lines
+        while "\n" in self._buf:
+            idx = self._buf.index("\n")
+            line_text = self._buf[:idx]
+            self._buf = self._buf[idx + 1:]
+            if line_text:
+                self._emit_output(line_text)
+        return len(text)
+
+    def flush(self) -> None:
+        if self._buf.strip():
+            self._emit_output(self._buf)
+            self._buf = ""
+
+    def _emit_output(self, text: str) -> None:
+        ts = round((time.perf_counter() - _start_time) * 1000.0, 4)
+        _emit({
+            "type": "output",
+            "eventId": max(0, _event_id - 1),
+            "text": text,
+            "timestamp": ts,
+        })
+
+    # Delegate attribute accesses needed by some libraries
+    def fileno(self) -> int:
+        return _real_stdout.fileno()
+
+    def isatty(self) -> bool:
+        return False
+
+    @property
+    def encoding(self) -> str:
+        return getattr(_real_stdout, "encoding", "utf-8")
 
 
 def _tracer(frame, event, arg):
@@ -210,6 +259,10 @@ def main():
 
     _start_time = time.perf_counter()
 
+    # Replace stdout so print() calls are captured as output events.
+    # _emit() always writes to _real_stdout, so there is no recursion.
+    sys.stdout = _CaptureWriter()
+
     sys.settrace(_tracer)
     try:
         runpy.run_path(script_path, run_name="__main__")
@@ -220,6 +273,10 @@ def main():
         _emit({"type": "error", "message": tb.format_exc()})
     finally:
         sys.settrace(None)
+        # Flush any buffered output and restore real stdout
+        if isinstance(sys.stdout, _CaptureWriter):
+            sys.stdout.flush()
+        sys.stdout = _real_stdout
 
     duration_ms = round((time.perf_counter() - _start_time) * 1000.0, 2)
     _emit({

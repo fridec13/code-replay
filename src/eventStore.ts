@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { TraceEvent, FunctionSegment, ExecutionTrace } from './types';
+import { TraceEvent, FunctionSegment, ExecutionTrace, OutputLog } from './types';
 
 /**
  * Central repository for all captured trace events.
@@ -14,6 +14,7 @@ import { TraceEvent, FunctionSegment, ExecutionTrace } from './types';
 export class EventStore implements vscode.Disposable {
   private _events: TraceEvent[] = [];
   private _segments: FunctionSegment[] = [];
+  private _outputLogs: OutputLog[] = [];
   /** Stack of open call events (not yet matched to a return) */
   private _callStack: OpenCall[] = [];
   private _trace: ExecutionTrace | null = null;
@@ -45,6 +46,7 @@ export class EventStore implements vscode.Disposable {
   clear(): void {
     this._events = [];
     this._segments = [];
+    this._outputLogs = [];
     this._callStack = [];
     this._trace = null;
     this._entryFile = '';
@@ -53,6 +55,10 @@ export class EventStore implements vscode.Disposable {
 
   setUserOnly(userOnly: boolean): void {
     this._userOnly = userOnly;
+  }
+
+  addOutputLog(log: OutputLog): void {
+    this._outputLogs.push(log);
   }
 
   addEvent(event: TraceEvent): void {
@@ -115,6 +121,7 @@ export class EventStore implements vscode.Disposable {
       durationMs,
       userCodeStartEventId: userCodeStartEventId < 0 ? 0 : userCodeStartEventId,
       userOnly: this._userOnly,
+      outputLogs: this._outputLogs,
     };
 
     this._onTraceReadyEmitter.fire(this._trace);

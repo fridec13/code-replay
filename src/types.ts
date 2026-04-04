@@ -29,6 +29,15 @@ export interface FunctionSegment {
   callDepth: number;
 }
 
+export interface OutputLog {
+  /** Trace event ID at the moment the print/log was called */
+  eventId: number;
+  text: string;
+  /** 'log' | 'warn' | 'error' | 'info' — JS only */
+  level?: string;
+  timestamp: number;
+}
+
 export interface ExecutionTrace {
   /** Absolute path of the entry file */
   entryFile: string;
@@ -47,6 +56,8 @@ export interface ExecutionTrace {
   userCodeStartEventId: number;
   /** Whether the trace was recorded with --user-only (default) */
   userOnly: boolean;
+  /** stdout / console.log output captured during tracing */
+  outputLogs: OutputLog[];
 }
 
 export type PlaybackState = 'idle' | 'playing' | 'paused';

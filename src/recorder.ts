@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
-import { TraceEvent } from './types';
+import { TraceEvent, OutputLog } from './types';
 import { EventStore } from './eventStore';
 
 /** Windows: try py launcher first, then python3, then python */
@@ -199,6 +199,17 @@ export class Recorder {
     if (type === 'config') {
       const userOnly = parsed['userOnly'] as boolean;
       this._store.setUserOnly(userOnly);
+      return;
+    }
+
+    if (type === 'output') {
+      const log: OutputLog = {
+        eventId:   parsed['eventId']   as number,
+        text:      parsed['text']      as string,
+        level:     parsed['level']     as string | undefined,
+        timestamp: parsed['timestamp'] as number,
+      };
+      this._store.addOutputLog(log);
       return;
     }
 

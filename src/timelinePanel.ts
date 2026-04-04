@@ -331,6 +331,60 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
     }
     #empty-state .icon { font-size: 28px; }
 
+    /* ── Console output section ──────────────────────────────────── */
+    #console-section {
+      flex-shrink: 0;
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      transition: max-height 0.2s ease;
+      max-height: 28px;
+    }
+    #console-section.open { max-height: 200px; }
+    #console-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      cursor: pointer;
+      user-select: none;
+      flex-shrink: 0;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      opacity: 0.65;
+    }
+    #console-header:hover { opacity: 1; background: rgba(255,255,255,0.04); }
+    #console-toggle { font-size: 9px; width: 10px; }
+    #console-count { margin-left: auto; opacity: 0.5; }
+    #console-body {
+      flex: 1;
+      overflow-y: auto;
+      font-family: monospace;
+      font-size: 11px;
+    }
+    .con-line {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      padding: 1px 8px 1px 20px;
+      border-left: 3px solid transparent;
+      opacity: 0.55;
+      white-space: pre-wrap;
+      word-break: break-all;
+      line-height: 1.6;
+    }
+    .con-line.con-active {
+      border-left-color: var(--accent2);
+      opacity: 1;
+      background: rgba(220,220,170,0.1);
+    }
+    .con-line.con-future { opacity: 0.28; }
+    .con-level { font-size: 9px; opacity: 0.5; flex-shrink: 0; }
+    .con-level.warn  { color: #e8c070; opacity: 0.8; }
+    .con-level.error { color: #f44747; opacity: 0.9; }
+
     /* ── Status / tooltip ────────────────────────────────────── */
     #status-text { font-size: 10px; opacity: 0.6; white-space: nowrap; }
     #tooltip {
@@ -400,6 +454,16 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
   </div>
 </div>
 
+<!-- Console output section (collapsible) -->
+<div id="console-section">
+  <div id="console-header">
+    <span id="console-toggle">&#9658;</span>
+    <span>Console</span>
+    <span id="console-count"></span>
+  </div>
+  <div id="console-body"></div>
+</div>
+
 <div id="tooltip"></div>
 
 <script nonce="${nonce}">
@@ -416,6 +480,7 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
   let segSeqNums = {};   // seg.key -> 1-based call order number
   let colorIndex = 0;
   let prevVariables = {};   // variables from the previous event
+  let outputLogs = [];      // OutputLog[]
 
   const COLOR_PALETTE = [
     '#4ec9b0','#569cd6','#c586c0','#dcdcaa',
@@ -437,11 +502,15 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
   const playhead    = document.getElementById('playhead');
   const emptyState  = document.getElementById('empty-state');
   const tooltip     = document.getElementById('tooltip');
-  const varSection  = document.getElementById('var-section');
-  const varEmpty    = document.getElementById('var-empty');
-  const varTable    = document.getElementById('var-table');
-  const varTbody    = document.getElementById('var-tbody');
-  const ctx         = canvasEl.getContext('2d');
+  const varSection    = document.getElementById('var-section');
+  const varEmpty      = document.getElementById('var-empty');
+  const varTable      = document.getElementById('var-table');
+  const varTbody      = document.getElementById('var-tbody');
+  const consoleSection = document.getElementById('console-section');
+  const consoleToggle  = document.getElementById('console-toggle');
+  const consoleCount   = document.getElementById('console-count');
+  const consoleBody    = document.getElementById('console-body');
+  const ctx           = canvasEl.getContext('2d');
 
   const TRACK_H    = 22;
   const TRACK_PAD  = 2;
@@ -469,6 +538,8 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
   function onTraceLoaded(t) {
     trace = t;
     prevVariables = {};
+    outputLogs = t.outputLogs || [];
+    consoleCount.textContent = outputLogs.length ? '(' + outputLogs.length + ')' : '';
     emptyState.style.display = 'none';
     canvasEl.style.display = 'block';
     playhead.style.display = 'block';
@@ -487,6 +558,9 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
   function clearAll() {
     trace = null;
     prevVariables = {};
+    outputLogs = [];
+    consoleCount.textContent = '';
+    consoleBody.innerHTML = '';
     emptyState.style.display = 'flex';
     canvasEl.style.display = 'none';
     playhead.style.display = 'none';
@@ -534,6 +608,8 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
         : prevVariables;
       prevVariables = prev;
       updateVarTable(prev, cur);
+
+      updateConsole(s.currentEventId);
     }
   }
 
@@ -637,6 +713,53 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
 
       varTbody.appendChild(tr);
     });
+  }
+
+  // ── Console output (B-style: context window around current step) ─────────
+  const CONSOLE_BEFORE = 5;
+  const CONSOLE_AFTER  = 3;
+
+  function updateConsole(currentEventId) {
+    if (!outputLogs.length) { consoleBody.innerHTML = ''; return; }
+
+    // Binary-search for the last log with eventId <= currentEventId
+    let lo = 0, hi = outputLogs.length - 1, pivot = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (outputLogs[mid].eventId <= currentEventId) { pivot = mid; lo = mid + 1; }
+      else { hi = mid - 1; }
+    }
+
+    const from = Math.max(0, pivot - CONSOLE_BEFORE + 1);
+    const to   = Math.min(outputLogs.length - 1, (pivot === -1 ? 0 : pivot) + CONSOLE_AFTER);
+    const window_ = outputLogs.slice(from, to + 1);
+
+    consoleBody.innerHTML = '';
+    window_.forEach((log) => {
+      const div = document.createElement('div');
+      div.className = 'con-line';
+      if (log.eventId === currentEventId) {
+        div.classList.add('con-active');
+      } else if (log.eventId > currentEventId) {
+        div.classList.add('con-future');
+      }
+
+      if (log.level && log.level !== 'log') {
+        const badge = document.createElement('span');
+        badge.className = 'con-level ' + log.level;
+        badge.textContent = log.level.toUpperCase();
+        div.appendChild(badge);
+      }
+
+      const text = document.createElement('span');
+      text.textContent = log.text;
+      div.appendChild(text);
+      consoleBody.appendChild(div);
+    });
+
+    // Scroll active line into view
+    const active = consoleBody.querySelector('.con-active');
+    if (active) active.scrollIntoView({ block: 'nearest' });
   }
 
   // ── Canvas rendering ──────────────────────────────────────────
@@ -804,6 +927,12 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
       e.preventDefault();
       vscode.postMessage({ type: 'playPause' });
     }
+  });
+
+  // ── Console toggle ────────────────────────────────────────────
+  document.getElementById('console-header').addEventListener('click', () => {
+    const open = consoleSection.classList.toggle('open');
+    consoleToggle.textContent = open ? '▼' : '▶';
   });
 
   // ── Init ──────────────────────────────────────────────────────

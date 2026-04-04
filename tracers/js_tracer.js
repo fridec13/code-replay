@@ -277,6 +277,24 @@ function instrumentExports(exports, absFile, depthRef) {
   return exports;
 }
 
+// ── Console output capture ────────────────────────────────────────────────────
+// Patch console.* methods so user log calls are emitted as output events
+// instead of being written to stdout (which would corrupt the JSON stream).
+;['log', 'info', 'warn', 'error', 'debug'].forEach((method) => {
+  console[method] = function (...args) {
+    const text = args.map((a) => reprSafe(a)).join(' ');
+    emit({
+      type: 'output',
+      eventId: Math.max(0, eventId - 1),
+      text,
+      level: method,
+      timestamp: nowMs(),
+    });
+    // Mirror to stderr so it still shows in the Output channel
+    process.stderr.write(`[${method}] ${text}\n`);
+  };
+});
+
 // ── Module hooking ────────────────────────────────────────────────────────────
 
 const originalCompile = Module.prototype._compile;
