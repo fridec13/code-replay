@@ -58,6 +58,8 @@ export interface ExecutionTrace {
   userOnly: boolean;
   /** stdout / console.log output captured during tracing */
   outputLogs: OutputLog[];
+  /** Set when the script crashed or the tracer reported a fatal error (trace may be partial) */
+  recordingError?: string;
 }
 
 export type PlaybackState = 'idle' | 'playing' | 'paused';
@@ -73,8 +75,8 @@ export interface PlaybackStatus {
   userCodeStartEventId: number;
 }
 
-export type SpeedOption = 0.01 | 0.1 | 0.5 | 1 | 2 | 5 | 10;
-export const SPEED_OPTIONS: SpeedOption[] = [0.01, 0.1, 0.5, 1, 2, 5, 10];
+export type SpeedOption = 0.1 | 0.5 | 1 | 2 | 5;
+export const SPEED_OPTIONS: SpeedOption[] = [0.1, 0.5, 1, 2, 5];
 
 /** Messages sent from extension host to the Timeline WebView */
 export type ExtensionToWebviewMessage =
@@ -88,6 +90,7 @@ export type WebviewToExtensionMessage =
   | { type: 'playPause' }
   | { type: 'stop' }
   | { type: 'setSpeed'; speed: SpeedOption }
+  | { type: 'stepBy'; delta: number }
   | { type: 'seekTo'; eventId: number }
   | { type: 'seekToSegment'; segmentKey: string }
   | { type: 'setStartMode'; mode: StartMode }

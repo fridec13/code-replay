@@ -79,7 +79,7 @@ export class EventStore implements vscode.Disposable {
    * Called once the tracer process exits.  Closes any unclosed call segments
    * (e.g. if the script was interrupted) and emits `onTraceReady`.
    */
-  finalize(entryFile: string): void {
+  finalize(entryFile: string, options?: { recordingError?: string }): void {
     this._entryFile = entryFile;
 
     // Close dangling open calls
@@ -122,6 +122,7 @@ export class EventStore implements vscode.Disposable {
       userCodeStartEventId: userCodeStartEventId < 0 ? 0 : userCodeStartEventId,
       userOnly: this._userOnly,
       outputLogs: this._outputLogs,
+      recordingError: options?.recordingError,
     };
 
     this._onTraceReadyEmitter.fire(this._trace);

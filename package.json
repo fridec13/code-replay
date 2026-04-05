@@ -152,6 +152,12 @@
           "type": "string",
           "default": "gdb",
           "description": "Path to the GDB debugger used for C/C++ recording. Set this if gdb is not on your PATH (e.g. C:\\msys64\\mingw64\\bin\\gdb.exe)."
+        },
+        "codeReplay.varDiffGranularity": {
+          "type": "string",
+          "enum": ["char", "word"],
+          "default": "char",
+          "description": "Variable diff table: highlight changes per character or per word (whitespace-separated tokens)."
         }
       }
     }
