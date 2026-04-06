@@ -115,6 +115,7 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
       vscode.workspace.getConfiguration('codeReplay').get<string>('varDiffGranularity', 'char') === 'word'
         ? 'word'
         : 'char';
+    const varInlineDiff = vscode.workspace.getConfiguration('codeReplay').get<boolean>('varInlineDiff', false);
 
     // Speed button labels: show step rate; step prev/next replace former 0.01x / 10x slots
     const speedLabels: Record<number, string> = {
@@ -147,7 +148,7 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
   <style>
     :root {
       --bg:        var(--vscode-sideBar-background, #1e1e1e);
-      --fg:        var(--vscode-sideBar-foreground, #cccccc);
+      --fg:        var(--vscode-foreground, var(--vscode-sideBar-foreground, #cccccc));
       --fg-muted:  var(--vscode-descriptionForeground, #9d9d9d);
       --border:    var(--vscode-panel-border, #3c3c3c);
       --border-strong: var(--vscode-contrastBorder, var(--vscode-widget-border, #6b6b6b));
@@ -162,6 +163,23 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
       --list-active-fg: var(--vscode-list-activeSelectionForeground, var(--fg));
       --resize-bar: var(--vscode-scrollbarSlider-background, rgba(120,120,120,0.35));
       --resize-bar-hover: var(--vscode-scrollbarSlider-hoverBackground, rgba(160,160,160,0.5));
+    }
+    /* Light theme: stronger borders, darker muted text, clearer hovers */
+    body.vscode-light {
+      --fg: var(--vscode-foreground, #1e1e1e);
+      --fg-muted: var(--vscode-descriptionForeground, #555555);
+      --border: var(--vscode-panel-border, #d0d0d0);
+      --border-strong: var(--vscode-contrastBorder, var(--vscode-widget-border, #b0b0b0));
+      --list-hover: rgba(0, 0, 0, 0.06);
+      --list-active: color-mix(in srgb, var(--vscode-list-activeSelectionBackground, #cce8ff) 85%, transparent);
+      --resize-bar: rgba(0, 0, 0, 0.12);
+      --resize-bar-hover: rgba(0, 0, 0, 0.22);
+    }
+    /* Dark theme: slightly brighter resize bars and selection */
+    body.vscode-dark {
+      --list-hover: rgba(255, 255, 255, 0.1);
+      --resize-bar: rgba(255, 255, 255, 0.16);
+      --resize-bar-hover: rgba(255, 255, 255, 0.28);
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -246,9 +264,9 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
     #speed-info {
       padding: 5px 8px;
       font-size: 12px;
-      font-weight: 500;
+      font-weight: 600;
       color: var(--fg-muted);
-      border-bottom: 1px solid var(--border);
+      border-bottom: 1px solid var(--border-strong);
       flex-shrink: 0;
     }
 
@@ -308,7 +326,7 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
       padding: 5px 6px;
       vertical-align: top;
       border-bottom: 1px solid var(--border);
-      color: var(--fg);
+      color: var(--vscode-editor-foreground, var(--fg));
       font-family: var(--vscode-editor-font-family, monospace);
       font-size: 12px;
       line-height: 1.45;
@@ -327,23 +345,53 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
     }
     td.diff-up {
       background: color-mix(in srgb, var(--vscode-testing-iconPassed, #388a3a) 28%, var(--bg));
-      color: var(--fg);
-      border-left: 2px solid var(--vscode-testing-iconPassed, #388a3a);
+      color: var(--vscode-editor-foreground, var(--fg));
+      border-left: 3px solid var(--vscode-testing-iconPassed, #388a3a);
     }
     td.diff-down {
       background: color-mix(in srgb, var(--vscode-errorForeground, #c72e0f) 22%, var(--bg));
-      color: var(--fg);
-      border-left: 2px solid var(--vscode-errorForeground, #c72e0f);
+      color: var(--vscode-editor-foreground, var(--fg));
+      border-left: 3px solid var(--vscode-errorForeground, #c72e0f);
     }
     td.diff-changed {
       background: color-mix(in srgb, var(--accent2) 25%, var(--bg));
-      color: var(--fg);
-      border-left: 2px solid var(--accent2);
+      color: var(--vscode-editor-foreground, var(--fg));
+      border-left: 3px solid var(--accent2);
     }
     td.diff-new {
       background: color-mix(in srgb, var(--accent) 22%, var(--bg));
-      color: var(--fg);
-      border-left: 2px solid var(--accent);
+      color: var(--vscode-editor-foreground, var(--fg));
+      border-left: 3px solid var(--accent);
+    }
+    body.vscode-light td.diff-up {
+      background: color-mix(in srgb, var(--vscode-testing-iconPassed, #1a7f37) 22%, var(--bg));
+      border-left-color: var(--vscode-testing-iconPassed, #1a7f37);
+    }
+    body.vscode-light td.diff-down {
+      background: color-mix(in srgb, var(--vscode-errorForeground, #b3261e) 20%, var(--bg));
+      border-left-color: var(--vscode-errorForeground, #b3261e);
+    }
+    body.vscode-light td.diff-changed {
+      background: color-mix(in srgb, var(--vscode-editorWarning-foreground, #b8860b) 18%, var(--bg));
+    }
+    body.vscode-light td.diff-new {
+      background: color-mix(in srgb, var(--vscode-terminal-ansiBlue, #0969da) 16%, var(--bg));
+      border-left-color: var(--vscode-terminal-ansiBlue, #0969da);
+    }
+    body.vscode-dark td.diff-up {
+      background: color-mix(in srgb, var(--vscode-testing-iconPassed, #3fb950) 24%, var(--bg));
+      border-left-color: var(--vscode-testing-iconPassed, #3fb950);
+    }
+    body.vscode-dark td.diff-down {
+      background: color-mix(in srgb, var(--vscode-errorForeground, #f85149) 22%, var(--bg));
+      border-left-color: var(--vscode-errorForeground, #f85149);
+    }
+    body.vscode-dark td.diff-changed {
+      background: color-mix(in srgb, var(--accent2) 28%, var(--bg));
+    }
+    body.vscode-dark td.diff-new {
+      background: color-mix(in srgb, var(--accent) 26%, var(--bg));
+      border-left-color: var(--accent);
     }
     td.diff-gone {
       color: var(--fg-muted);
@@ -364,16 +412,35 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
       text-underline-offset: 3px;
       text-decoration-color: color-mix(in srgb, var(--fg) 55%, transparent);
     }
-    td.diff-up .diff-val-em { text-decoration-color: color-mix(in srgb, var(--vscode-testing-iconPassed, #388a3a) 70%, var(--fg)); }
-    td.diff-down .diff-val-em { text-decoration-color: color-mix(in srgb, var(--vscode-errorForeground, #c72e0f) 70%, var(--fg)); }
-    td.diff-changed .diff-val-em { text-decoration-color: color-mix(in srgb, var(--accent2) 65%, var(--fg)); }
-    td.diff-new .diff-val-em { text-decoration-color: color-mix(in srgb, var(--accent) 65%, var(--fg)); }
+    td.diff-up .diff-val-em { text-decoration-color: var(--vscode-testing-iconPassed, #388a3a); }
+    td.diff-down .diff-val-em { text-decoration-color: var(--vscode-errorForeground, #c72e0f); }
+    td.diff-changed .diff-val-em { text-decoration-color: var(--accent2); }
+    td.diff-new .diff-val-em { text-decoration-color: var(--accent); }
+    body.vscode-light td.diff-up .diff-val-em,
+    body.vscode-light td.diff-down .diff-val-em,
+    body.vscode-light td.diff-changed .diff-val-em,
+    body.vscode-light td.diff-new .diff-val-em {
+      color: var(--vscode-editor-foreground, #1a1a1a);
+    }
+    body.vscode-dark td.diff-up .diff-val-em,
+    body.vscode-dark td.diff-down .diff-val-em,
+    body.vscode-dark td.diff-changed .diff-val-em,
+    body.vscode-dark td.diff-new .diff-val-em {
+      color: var(--vscode-editor-foreground, #e0e0e0);
+    }
 
     #var-table td .diff-val-del {
       text-decoration: line-through;
       text-decoration-thickness: 1.5px;
       color: var(--fg-muted);
       font-weight: 600;
+    }
+    body.vscode-light #var-table td .diff-val-del {
+      color: var(--vscode-descriptionForeground, #6e6e6e);
+      text-decoration-color: color-mix(in srgb, var(--vscode-descriptionForeground, #6e6e6e) 75%, transparent);
+    }
+    body.vscode-dark #var-table td .diff-val-del {
+      color: var(--vscode-descriptionForeground, #9d9d9d);
     }
     #var-empty {
       padding: 8px;
@@ -549,8 +616,8 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
     }
     .con-line.con-future { color: var(--fg-muted); }
     .con-level { font-size: 10px; color: var(--fg-muted); flex-shrink: 0; font-weight: 600; }
-    .con-level.warn  { color: #e8c070; opacity: 0.8; }
-    .con-level.error { color: #f44747; opacity: 0.9; }
+    .con-level.warn  { color: var(--vscode-editorWarning-foreground, #cca700); }
+    .con-level.error { color: var(--vscode-errorForeground, #f14c4c); }
 
     /* ── Recording error banner ───────────────────────────────── */
     #recording-error {
@@ -571,7 +638,9 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
     #recording-error.visible { display: block; }
 
     /* ── Status / tooltip ────────────────────────────────────── */
-    #status-text { font-size: 11px; color: var(--fg-muted); font-weight: 500; white-space: nowrap; }
+    #status-text { font-size: 11px; color: var(--fg-muted); font-weight: 600; white-space: nowrap; }
+    body.vscode-light #status-text { color: var(--vscode-descriptionForeground, #4a4a4a); }
+    body.vscode-dark #status-text { color: var(--vscode-descriptionForeground, #b0b0b0); }
     #tooltip {
       position: fixed;
       background: var(--vscode-editorHoverWidget-background, #252526);
@@ -670,6 +739,7 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
   'use strict';
 
   const VAR_DIFF_MODE = ${JSON.stringify(varDiffMode)};
+  const VAR_INLINE_DIFF_ENABLED = ${varInlineDiff ? 'true' : 'false'};
 
   const vscode = acquireVsCodeApi();
 
@@ -794,6 +864,7 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
   }
 
   function tryInlineDiff(tdPrev, tdCur, pVal, cVal, rowClass) {
+    if (!VAR_INLINE_DIFF_ENABLED) return false;
     var ps = String(pVal);
     var cs = String(cVal);
     if (ps === cs) return false;

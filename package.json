@@ -2,7 +2,7 @@
   "name": "code-replay",
   "displayName": "Code Replay",
   "description": "Record and replay code execution with function highlights, variable decorations, and a timeline panel.",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "publisher": "fridec13",
   "engines": {
     "vscode": "^1.85.0"
@@ -157,7 +157,12 @@
           "type": "string",
           "enum": ["char", "word"],
           "default": "char",
-          "description": "Variable diff table: highlight changes per character or per word (whitespace-separated tokens)."
+          "description": "When inline diff is enabled: highlight changes per character or per word (whitespace-separated tokens)."
+        },
+        "codeReplay.varInlineDiff": {
+          "type": "boolean",
+          "default": false,
+          "description": "Variable table: show per-character/word inline diff for changed values (clearer but slower when many or long strings). When off, only whole-cell highlighting is used."
         }
       }
     }
