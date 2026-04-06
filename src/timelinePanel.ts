@@ -94,6 +94,9 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
       case 'setSpeed':
         this._replay.setSpeed(msg.speed as SpeedOption);
         break;
+      case 'stepBy':
+        this._replay.seekToEvent(this._replay.currentEventId + msg.delta);
+        break;
       case 'seekTo':
         this._replay.seekToEvent(msg.eventId);
         break;
@@ -108,20 +111,29 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
 
   private _buildHtml(webview: vscode.Webview): string {
     const nonce = getNonce();
+    const varDiffMode =
+      vscode.workspace.getConfiguration('codeReplay').get<string>('varDiffGranularity', 'char') === 'word'
+        ? 'word'
+        : 'char';
+    const varInlineDiff = vscode.workspace.getConfiguration('codeReplay').get<boolean>('varInlineDiff', false);
 
-    // Speed button labels: show step rate
+    // Speed button labels: show step rate; step prev/next replace former 0.01x / 10x slots
     const speedLabels: Record<number, string> = {
-      0.01: '0.01x',
-      0.1:  '0.1x',
-      0.5:  '0.5x',
-      1:    '1x',
-      2:    '2x',
-      5:    '5x',
-      10:   '10x',
+      0.1: '0.1x',
+      0.5: '0.5x',
+      1: '1x',
+      2: '2x',
+      5: '5x',
     };
-    const speedOptions = SPEED_OPTIONS.map(
-      (s) => `<button class="speed-btn" data-speed="${s}" title="${s < 1 ? (1/s).toFixed(0)+'s' : s+'steps'}/s">${speedLabels[s] ?? s + 'x'}</button>`,
-    ).join('');
+    const speedOptions =
+      SPEED_OPTIONS.map(
+        (s) =>
+          `<button type="button" class="speed-btn" data-speed="${s}" title="${
+            s < 1 ? (1 / s).toFixed(0) + 's' : s + ' steps'
+          }/s">${speedLabels[s] ?? s + 'x'}</button>`,
+      ).join('') +
+      '<button type="button" class="step-btn" id="step-prev" title="Previous step (&minus;1)">&#9664;</button>' +
+      '<button type="button" class="step-btn" id="step-next" title="Next step (+1)">&#9654;</button>';
 
     return /* html */ `<!DOCTYPE html>
 <html lang="en">
@@ -136,14 +148,38 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
   <style>
     :root {
       --bg:        var(--vscode-sideBar-background, #1e1e1e);
-      --fg:        var(--vscode-sideBar-foreground, #ccc);
-      --border:    var(--vscode-panel-border, #444);
+      --fg:        var(--vscode-foreground, var(--vscode-sideBar-foreground, #cccccc));
+      --fg-muted:  var(--vscode-descriptionForeground, #9d9d9d);
+      --border:    var(--vscode-panel-border, #3c3c3c);
+      --border-strong: var(--vscode-contrastBorder, var(--vscode-widget-border, #6b6b6b));
       --accent:    var(--vscode-terminal-ansiBlue, #569cd6);
-      --accent2:   var(--vscode-editorWarning-foreground, #dcdcaa);
+      --accent2:   var(--vscode-editorWarning-foreground, #cca700);
       --btn-bg:    var(--vscode-button-background, #0e639c);
-      --btn-fg:    var(--vscode-button-foreground, #fff);
+      --btn-fg:    var(--vscode-button-foreground, #ffffff);
       --btn-hover: var(--vscode-button-hoverBackground, #1177bb);
-      --track-bg:  var(--vscode-editor-background, #252526);
+      --track-bg:  var(--vscode-input-background, var(--vscode-editor-background, #252526));
+      --list-hover: var(--vscode-list-hoverBackground, rgba(255,255,255,0.08));
+      --list-active: var(--vscode-list-activeSelectionBackground, rgba(0, 122, 204, 0.35));
+      --list-active-fg: var(--vscode-list-activeSelectionForeground, var(--fg));
+      --resize-bar: var(--vscode-scrollbarSlider-background, rgba(120,120,120,0.35));
+      --resize-bar-hover: var(--vscode-scrollbarSlider-hoverBackground, rgba(160,160,160,0.5));
+    }
+    /* Light theme: stronger borders, darker muted text, clearer hovers */
+    body.vscode-light {
+      --fg: var(--vscode-foreground, #1e1e1e);
+      --fg-muted: var(--vscode-descriptionForeground, #555555);
+      --border: var(--vscode-panel-border, #d0d0d0);
+      --border-strong: var(--vscode-contrastBorder, var(--vscode-widget-border, #b0b0b0));
+      --list-hover: rgba(0, 0, 0, 0.06);
+      --list-active: color-mix(in srgb, var(--vscode-list-activeSelectionBackground, #cce8ff) 85%, transparent);
+      --resize-bar: rgba(0, 0, 0, 0.12);
+      --resize-bar-hover: rgba(0, 0, 0, 0.22);
+    }
+    /* Dark theme: slightly brighter resize bars and selection */
+    body.vscode-dark {
+      --list-hover: rgba(255, 255, 255, 0.1);
+      --resize-bar: rgba(255, 255, 255, 0.16);
+      --resize-bar-hover: rgba(255, 255, 255, 0.28);
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -152,6 +188,13 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
       background: var(--bg);
       color: var(--fg);
       height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    #fill {
+      flex: 1;
+      min-height: 0;
       display: flex;
       flex-direction: column;
       overflow: hidden;
@@ -181,18 +224,49 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
     button.active { outline: 2px solid var(--accent2); }
     #play-btn { min-width: 56px; }
     .speed-group { display: flex; gap: 2px; }
-    .speed-btn { padding: 4px 6px; background: var(--track-bg); color: var(--vscode-foreground, #ccc); }
-    .speed-btn.active { background: var(--btn-bg); color: var(--btn-fg); }
+    .speed-btn {
+      padding: 4px 6px;
+      background: var(--track-bg);
+      color: var(--fg);
+      border: 1px solid var(--border);
+    }
+    .speed-btn.active { background: var(--btn-bg); color: var(--btn-fg); border-color: transparent; }
+    .step-btn {
+      padding: 4px 8px;
+      min-width: 30px;
+      background: var(--track-bg);
+      color: var(--fg);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      font-size: 13px;
+      line-height: 1;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .step-btn:hover { background: var(--list-hover); }
+    .step-btn:active { background: var(--list-active); }
     .mode-group { display: flex; gap: 2px; margin-left: auto; }
-    .mode-btn { padding: 3px 7px; background: var(--track-bg); font-size: 11px; color: var(--vscode-foreground, #ccc); }
-    .mode-btn.active { background: #1a4a1a; outline: 1px solid #4ec94e; color: #9ee89e; }
+    .mode-btn {
+      padding: 3px 7px;
+      background: var(--track-bg);
+      font-size: 11px;
+      color: var(--fg);
+      border: 1px solid var(--border);
+    }
+    .mode-btn.active {
+      background: var(--list-active);
+      color: var(--list-active-fg);
+      border-color: var(--accent);
+      outline: none;
+    }
 
     /* ── Speed info ────────────────────────────────────────────── */
     #speed-info {
-      padding: 3px 8px;
-      font-size: 11px;
-      opacity: 0.6;
-      border-bottom: 1px solid var(--border);
+      padding: 5px 8px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--fg-muted);
+      border-bottom: 1px solid var(--border-strong);
       flex-shrink: 0;
     }
 
@@ -208,82 +282,229 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
     #var-section {
       flex-shrink: 0;
       border-bottom: 1px solid var(--border);
-      max-height: 180px;
+      height: 160px;
+      min-height: 72px;
       overflow-y: auto;
+      overflow-x: hidden;
     }
     #var-section h4 {
-      padding: 4px 8px;
+      padding: 6px 8px;
       font-size: 11px;
+      font-weight: 600;
       text-transform: uppercase;
-      letter-spacing: 0.05em;
-      opacity: 0.6;
+      letter-spacing: 0.06em;
+      color: var(--fg);
       position: sticky;
       top: 0;
       background: var(--bg);
-      border-bottom: 1px solid var(--border);
+      border-bottom: 1px solid var(--border-strong);
+      z-index: 1;
     }
     #var-table {
       width: 100%;
+      table-layout: fixed;
       border-collapse: collapse;
       font-size: 12px;
     }
+    #var-table col.var-col-name { width: 30%; }
+    #var-table col.var-col-prev { width: 35%; }
+    #var-table col.var-col-cur { width: 35%; }
     #var-table th {
-      padding: 3px 6px;
+      padding: 4px 6px;
       text-align: left;
-      opacity: 0.5;
-      font-weight: normal;
+      color: var(--fg-muted);
+      font-weight: 600;
       font-size: 11px;
-      border-bottom: 1px solid var(--border);
+      border-bottom: 1px solid var(--border-strong);
       position: sticky;
-      top: 24px;
+      top: 28px;
       background: var(--bg);
+      z-index: 1;
+      box-sizing: border-box;
     }
     #var-table td {
-      padding: 3px 6px;
+      padding: 5px 6px;
       vertical-align: top;
-      border-bottom: 1px solid rgba(255,255,255,0.04);
-      font-family: monospace;
-      max-width: 120px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+      border-bottom: 1px solid var(--border);
+      color: var(--vscode-editor-foreground, var(--fg));
+      font-family: var(--vscode-editor-font-family, monospace);
+      font-size: 12px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      box-sizing: border-box;
+      min-width: 0;
     }
-    #var-table td.var-name { opacity: 0.85; color: var(--accent); }
-    td.diff-up    { background: rgba(0, 180, 0,  0.18); color: #7ec87e; }
-    td.diff-down  { background: rgba(220, 50, 50, 0.18); color: #e07070; }
-    td.diff-changed { background: rgba(200,180,0,0.15); color: #d4c060; }
-    td.diff-new   { background: rgba(86,156,214,0.15); color: #9cdcfe; }
-    td.diff-gone  { opacity: 0.4; text-decoration: line-through; }
-    #var-empty {
-      padding: 6px 8px;
-      opacity: 0.4;
-      font-size: 11px;
+    #var-table td.var-name {
+      color: var(--accent);
+      font-weight: 500;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    td.diff-up {
+      background: color-mix(in srgb, var(--vscode-testing-iconPassed, #388a3a) 28%, var(--bg));
+      color: var(--vscode-editor-foreground, var(--fg));
+      border-left: 3px solid var(--vscode-testing-iconPassed, #388a3a);
+    }
+    td.diff-down {
+      background: color-mix(in srgb, var(--vscode-errorForeground, #c72e0f) 22%, var(--bg));
+      color: var(--vscode-editor-foreground, var(--fg));
+      border-left: 3px solid var(--vscode-errorForeground, #c72e0f);
+    }
+    td.diff-changed {
+      background: color-mix(in srgb, var(--accent2) 25%, var(--bg));
+      color: var(--vscode-editor-foreground, var(--fg));
+      border-left: 3px solid var(--accent2);
+    }
+    td.diff-new {
+      background: color-mix(in srgb, var(--accent) 22%, var(--bg));
+      color: var(--vscode-editor-foreground, var(--fg));
+      border-left: 3px solid var(--accent);
+    }
+    body.vscode-light td.diff-up {
+      background: color-mix(in srgb, var(--vscode-testing-iconPassed, #1a7f37) 22%, var(--bg));
+      border-left-color: var(--vscode-testing-iconPassed, #1a7f37);
+    }
+    body.vscode-light td.diff-down {
+      background: color-mix(in srgb, var(--vscode-errorForeground, #b3261e) 20%, var(--bg));
+      border-left-color: var(--vscode-errorForeground, #b3261e);
+    }
+    body.vscode-light td.diff-changed {
+      background: color-mix(in srgb, var(--vscode-editorWarning-foreground, #b8860b) 18%, var(--bg));
+    }
+    body.vscode-light td.diff-new {
+      background: color-mix(in srgb, var(--vscode-terminal-ansiBlue, #0969da) 16%, var(--bg));
+      border-left-color: var(--vscode-terminal-ansiBlue, #0969da);
+    }
+    body.vscode-dark td.diff-up {
+      background: color-mix(in srgb, var(--vscode-testing-iconPassed, #3fb950) 24%, var(--bg));
+      border-left-color: var(--vscode-testing-iconPassed, #3fb950);
+    }
+    body.vscode-dark td.diff-down {
+      background: color-mix(in srgb, var(--vscode-errorForeground, #f85149) 22%, var(--bg));
+      border-left-color: var(--vscode-errorForeground, #f85149);
+    }
+    body.vscode-dark td.diff-changed {
+      background: color-mix(in srgb, var(--accent2) 28%, var(--bg));
+    }
+    body.vscode-dark td.diff-new {
+      background: color-mix(in srgb, var(--accent) 26%, var(--bg));
+      border-left-color: var(--accent);
+    }
+    td.diff-gone {
+      color: var(--fg-muted);
+      text-decoration: line-through;
+      opacity: 0.85;
+    }
+    /* Emphasize the displayed value when it changed (current column) */
+    td.diff-up .diff-val-em,
+    td.diff-down .diff-val-em,
+    td.diff-changed .diff-val-em,
+    td.diff-new .diff-val-em {
+      font-weight: 700;
+      font-size: 1.07em;
+      letter-spacing: 0.02em;
+      color: var(--fg);
+      text-decoration: underline;
+      text-decoration-thickness: 2px;
+      text-underline-offset: 3px;
+      text-decoration-color: color-mix(in srgb, var(--fg) 55%, transparent);
+    }
+    td.diff-up .diff-val-em { text-decoration-color: var(--vscode-testing-iconPassed, #388a3a); }
+    td.diff-down .diff-val-em { text-decoration-color: var(--vscode-errorForeground, #c72e0f); }
+    td.diff-changed .diff-val-em { text-decoration-color: var(--accent2); }
+    td.diff-new .diff-val-em { text-decoration-color: var(--accent); }
+    body.vscode-light td.diff-up .diff-val-em,
+    body.vscode-light td.diff-down .diff-val-em,
+    body.vscode-light td.diff-changed .diff-val-em,
+    body.vscode-light td.diff-new .diff-val-em {
+      color: var(--vscode-editor-foreground, #1a1a1a);
+    }
+    body.vscode-dark td.diff-up .diff-val-em,
+    body.vscode-dark td.diff-down .diff-val-em,
+    body.vscode-dark td.diff-changed .diff-val-em,
+    body.vscode-dark td.diff-new .diff-val-em {
+      color: var(--vscode-editor-foreground, #e0e0e0);
     }
 
+    #var-table td .diff-val-del {
+      text-decoration: line-through;
+      text-decoration-thickness: 1.5px;
+      color: var(--fg-muted);
+      font-weight: 600;
+    }
+    body.vscode-light #var-table td .diff-val-del {
+      color: var(--vscode-descriptionForeground, #6e6e6e);
+      text-decoration-color: color-mix(in srgb, var(--vscode-descriptionForeground, #6e6e6e) 75%, transparent);
+    }
+    body.vscode-dark #var-table td .diff-val-del {
+      color: var(--vscode-descriptionForeground, #9d9d9d);
+    }
+    #var-empty {
+      padding: 8px;
+      color: var(--fg-muted);
+      font-size: 12px;
+    }
+    #var-table td.var-cell-empty {
+      color: var(--fg-muted);
+    }
+
+    /* ── Resize handles ──────────────────────────────────────── */
+    .resize-h {
+      flex-shrink: 0;
+      height: 6px;
+      cursor: row-resize;
+      background: var(--resize-bar);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      position: relative;
+    }
+    .resize-h:hover, .resize-h.dragging { background: var(--resize-bar-hover); }
+    .resize-v {
+      flex-shrink: 0;
+      width: 6px;
+      cursor: col-resize;
+      background: var(--resize-bar);
+      border-left: 1px solid var(--border);
+      border-right: 1px solid var(--border);
+    }
+    .resize-v:hover, .resize-v.dragging { background: var(--resize-bar-hover); }
+
     /* ── Main layout ─────────────────────────────────────────── */
-    #main { display: flex; flex: 1; overflow: hidden; min-height: 0; }
+    #main {
+      display: flex;
+      flex-direction: row;
+      flex: 1;
+      overflow: hidden;
+      min-height: 60px;
+    }
 
     /* ── Splits sidebar ──────────────────────────────────────── */
     #splits {
       width: 150px;
-      min-width: 90px;
+      min-width: 72px;
+      max-width: 85%;
       overflow-y: auto;
-      border-right: 1px solid var(--border);
+      overflow-x: hidden;
       flex-shrink: 0;
     }
     #splits h3 {
-      padding: 5px 8px;
+      padding: 6px 8px;
       font-size: 11px;
+      font-weight: 600;
       text-transform: uppercase;
-      opacity: 0.6;
-      letter-spacing: 0.05em;
-      border-bottom: 1px solid var(--border);
+      letter-spacing: 0.06em;
+      color: var(--fg);
+      border-bottom: 1px solid var(--border-strong);
       position: sticky;
       top: 0;
       background: var(--bg);
+      z-index: 1;
     }
     .split-item {
-      padding: 5px 8px;
+      padding: 6px 8px;
       cursor: pointer;
       border-left: 3px solid transparent;
       white-space: nowrap;
@@ -291,19 +512,20 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
       text-overflow: ellipsis;
       font-size: 12px;
       line-height: 1.5;
+      color: var(--fg);
     }
-    .split-item:hover { background: rgba(255,255,255,0.06); }
+    .split-item:hover { background: var(--list-hover); }
     .split-item.active {
       border-left-color: var(--accent);
-      background: rgba(86,156,214,0.15);
+      background: var(--list-active);
+      color: var(--list-active-fg);
     }
-    .split-duration { opacity: 0.5; font-size: 11px; display: block; }
+    .split-duration { color: var(--fg-muted); font-size: 11px; display: block; }
     .split-seq {
       display: inline-block;
       min-width: 26px;
       font-size: 10px;
-      opacity: 0.55;
-      color: var(--accent2);
+      color: var(--fg-muted);
       margin-right: 4px;
       flex-shrink: 0;
     }
@@ -326,67 +548,99 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
     #empty-state {
       display: flex; flex-direction: column;
       align-items: center; justify-content: center;
-      height: 100%; opacity: 0.5; gap: 8px;
+      height: 100%;
+      gap: 8px;
       padding: 16px; text-align: center;
+      color: var(--fg-muted);
+      font-size: 12px;
     }
     #empty-state .icon { font-size: 28px; }
 
     /* ── Console output section ──────────────────────────────────── */
     #console-section {
       flex-shrink: 0;
-      border-top: 1px solid var(--border);
+      border-top: 1px solid var(--border-strong);
       display: flex;
       flex-direction: column;
       overflow: hidden;
-      transition: max-height 0.2s ease;
-      max-height: 28px;
+      max-height: 30px;
     }
-    #console-section.open { max-height: 200px; }
+    #console-section.open {
+      max-height: none;
+    }
     #console-header {
       display: flex;
       align-items: center;
       gap: 6px;
-      padding: 5px 8px;
+      padding: 6px 8px;
       cursor: pointer;
       user-select: none;
       flex-shrink: 0;
       font-size: 11px;
+      font-weight: 600;
       text-transform: uppercase;
-      letter-spacing: 0.05em;
-      opacity: 0.65;
+      letter-spacing: 0.06em;
+      color: var(--fg);
+      background: var(--bg);
+      border-bottom: 1px solid transparent;
     }
-    #console-header:hover { opacity: 1; background: rgba(255,255,255,0.04); }
+    #console-section.open #console-header {
+      border-bottom-color: var(--border);
+    }
+    #console-header:hover { background: var(--list-hover); }
     #console-toggle { font-size: 9px; width: 10px; }
-    #console-count { margin-left: auto; opacity: 0.5; }
+    #console-count { margin-left: auto; color: var(--fg-muted); font-weight: 500; }
     #console-body {
       flex: 1;
+      min-height: 0;
       overflow-y: auto;
       font-family: monospace;
       font-size: 12px;
+      color: var(--fg);
+      line-height: 1.55;
     }
     .con-line {
       display: flex;
       align-items: baseline;
       gap: 6px;
-      padding: 2px 8px 2px 20px;
+      padding: 3px 8px 3px 20px;
       border-left: 3px solid transparent;
-      opacity: 0.55;
+      color: var(--fg);
       white-space: pre-wrap;
       word-break: break-all;
-      line-height: 1.6;
+      line-height: 1.55;
     }
     .con-line.con-active {
       border-left-color: var(--accent2);
-      opacity: 1;
-      background: rgba(220,220,170,0.1);
+      background: color-mix(in srgb, var(--accent2) 14%, var(--bg));
     }
-    .con-line.con-future { opacity: 0.28; }
-    .con-level { font-size: 10px; opacity: 0.5; flex-shrink: 0; }
-    .con-level.warn  { color: #e8c070; opacity: 0.8; }
-    .con-level.error { color: #f44747; opacity: 0.9; }
+    .con-line.con-future { color: var(--fg-muted); }
+    .con-level { font-size: 10px; color: var(--fg-muted); flex-shrink: 0; font-weight: 600; }
+    .con-level.warn  { color: var(--vscode-editorWarning-foreground, #cca700); }
+    .con-level.error { color: var(--vscode-errorForeground, #f14c4c); }
+
+    /* ── Recording error banner ───────────────────────────────── */
+    #recording-error {
+      display: none;
+      margin: 6px 8px 0 8px;
+      padding: 8px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      word-break: break-word;
+      border: 1px solid color-mix(in srgb, var(--vscode-errorForeground, #f14c4c) 55%, var(--bg));
+      background: color-mix(in srgb, var(--vscode-errorForeground, #f14c4c) 12%, var(--bg));
+      color: var(--fg);
+      max-height: 120px;
+      overflow-y: auto;
+    }
+    #recording-error.visible { display: block; }
 
     /* ── Status / tooltip ────────────────────────────────────── */
-    #status-text { font-size: 10px; opacity: 0.6; white-space: nowrap; }
+    #status-text { font-size: 11px; color: var(--fg-muted); font-weight: 600; white-space: nowrap; }
+    body.vscode-light #status-text { color: var(--vscode-descriptionForeground, #4a4a4a); }
+    body.vscode-dark #status-text { color: var(--vscode-descriptionForeground, #b0b0b0); }
     #tooltip {
       position: fixed;
       background: var(--vscode-editorHoverWidget-background, #252526);
@@ -417,6 +671,9 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
 <!-- Speed info line -->
 <div id="speed-info"><span id="speed-label">1x (1 step/s)</span> &nbsp;|&nbsp; <span id="status-text">No trace loaded</span></div>
 
+<div id="recording-error" aria-live="polite"></div>
+
+<div id="fill">
 <!-- Scrubber -->
 <div id="scrubber-row">
   <input type="range" id="scrubber" min="0" max="0" value="0" step="1">
@@ -427,6 +684,11 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
   <h4>Variables</h4>
   <div id="var-empty">Run a recording to see variable changes.</div>
   <table id="var-table" style="display:none">
+    <colgroup>
+      <col class="var-col-name" />
+      <col class="var-col-prev" />
+      <col class="var-col-cur" />
+    </colgroup>
     <thead>
       <tr>
         <th>Variable</th>
@@ -438,12 +700,15 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
   </table>
 </div>
 
+<div id="resize-var-main" class="resize-h" title="Drag to resize Variables height"></div>
+
 <!-- Main: splits + timeline -->
 <div id="main">
   <div id="splits">
     <h3>Functions</h3>
     <div id="splits-list"></div>
   </div>
+  <div id="resize-splits" class="resize-v" title="Drag to resize Functions width"></div>
   <div id="timeline-area">
     <div id="empty-state">
       <div class="icon">&#9654;</div>
@@ -454,6 +719,8 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
   </div>
 </div>
 
+<div id="resize-main-console" class="resize-h" title="Drag to resize Console height"></div>
+
 <!-- Console output section (collapsible) -->
 <div id="console-section">
   <div id="console-header">
@@ -463,12 +730,16 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
   </div>
   <div id="console-body"></div>
 </div>
+</div>
 
 <div id="tooltip"></div>
 
 <script nonce="${nonce}">
 (function () {
   'use strict';
+
+  const VAR_DIFF_MODE = ${JSON.stringify(varDiffMode)};
+  const VAR_INLINE_DIFF_ENABLED = ${varInlineDiff ? 'true' : 'false'};
 
   const vscode = acquireVsCodeApi();
 
@@ -487,11 +758,134 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
     '#ce9178','#9cdcfe','#f44747','#b5cea8',
   ];
 
+  // ── Inline string diff (char / word) — LCS backtrack, merged runs ─────
+  var MAX_DIFF_UNITS = 2500;
+  var MAX_DIFF_DP = 6000000;
+
+  function tokenizeWords(s) {
+    if (!s) return [];
+    return s.split(/(\s+)/).filter(function (t) { return t.length > 0; });
+  }
+
+  function diffSequences(oldSeq, newSeq, eq) {
+    var n = oldSeq.length;
+    var m = newSeq.length;
+    if (n * m > MAX_DIFF_DP) return null;
+    var dp = new Array(n + 1);
+    var i, j;
+    for (i = 0; i <= n; i++) {
+      dp[i] = new Array(m + 1);
+      for (j = 0; j <= m; j++) dp[i][j] = 0;
+    }
+    for (i = 1; i <= n; i++) {
+      for (j = 1; j <= m; j++) {
+        if (eq(oldSeq[i - 1], newSeq[j - 1])) dp[i][j] = dp[i - 1][j - 1] + 1;
+        else dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+      }
+    }
+    var raw = [];
+    i = n;
+    j = m;
+    while (i > 0 || j > 0) {
+      if (i > 0 && j > 0 && eq(oldSeq[i - 1], newSeq[j - 1])) {
+        raw.push({ op: 'equal', o: oldSeq[i - 1], n: newSeq[j - 1] });
+        i--;
+        j--;
+      } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+        raw.push({ op: 'insert', n: newSeq[j - 1] });
+        j--;
+      } else if (i > 0) {
+        raw.push({ op: 'delete', o: oldSeq[i - 1] });
+        i--;
+      } else {
+        break;
+      }
+    }
+    raw.reverse();
+    return raw;
+  }
+
+  function mergeRawOps(raw, isWord) {
+    var out = [];
+    for (var k = 0; k < raw.length; k++) {
+      var r = raw[k];
+      var op = r.op;
+      var text;
+      if (op === 'equal') {
+        text = String(r.o);
+      } else if (op === 'insert') {
+        text = String(r.n);
+      } else {
+        text = String(r.o);
+      }
+      var last = out[out.length - 1];
+      if (last && last.op === op) last.text += text;
+      else out.push({ op: op, text: text });
+    }
+    return out;
+  }
+
+  function computeInlineOps(oldStr, newStr, mode) {
+    var oldSeq = mode === 'word' ? tokenizeWords(oldStr) : oldStr.split('');
+    var newSeq = mode === 'word' ? tokenizeWords(newStr) : newStr.split('');
+    if (oldSeq.length > MAX_DIFF_UNITS || newSeq.length > MAX_DIFF_UNITS) return null;
+    if (oldSeq.length * newSeq.length > MAX_DIFF_DP) return null;
+    var raw = diffSequences(oldSeq, newSeq, function (a, b) { return a === b; });
+    if (!raw) return null;
+    return mergeRawOps(raw, mode === 'word');
+  }
+
+  function renderDiffOpsPrev(td, ops) {
+    td.textContent = '';
+    for (var i = 0; i < ops.length; i++) {
+      var seg = ops[i];
+      if (seg.op === 'equal') td.appendChild(document.createTextNode(seg.text));
+      else if (seg.op === 'delete') {
+        var sp = document.createElement('span');
+        sp.className = 'diff-val-del';
+        sp.textContent = seg.text;
+        td.appendChild(sp);
+      }
+    }
+  }
+
+  function renderDiffOpsCur(td, ops) {
+    td.textContent = '';
+    for (var i = 0; i < ops.length; i++) {
+      var seg = ops[i];
+      if (seg.op === 'equal') td.appendChild(document.createTextNode(seg.text));
+      else if (seg.op === 'insert') {
+        var sp = document.createElement('span');
+        sp.className = 'diff-val-em';
+        sp.textContent = seg.text;
+        td.appendChild(sp);
+      }
+    }
+  }
+
+  function tryInlineDiff(tdPrev, tdCur, pVal, cVal, rowClass) {
+    if (!VAR_INLINE_DIFF_ENABLED) return false;
+    var ps = String(pVal);
+    var cs = String(cVal);
+    if (ps === cs) return false;
+    var mode = VAR_DIFF_MODE === 'word' ? 'word' : 'char';
+    var ops = computeInlineOps(ps, cs, mode);
+    if (!ops || ops.length === 0) return false;
+    tdPrev.title = ps;
+    tdPrev.className = '';
+    renderDiffOpsPrev(tdPrev, ops);
+    tdCur.title = cs;
+    tdCur.className = rowClass;
+    renderDiffOpsCur(tdCur, ops);
+    return true;
+  }
+
   // ── DOM refs ──────────────────────────────────────────────────
   const playBtn     = document.getElementById('play-btn');
   const stopBtn     = document.getElementById('stop-btn');
   const scrubber    = document.getElementById('scrubber');
   const statusText  = document.getElementById('status-text');
+  const recordingErrorEl = document.getElementById('recording-error');
   const speedLabel_ = document.getElementById('speed-label');
   const speedGroup  = document.getElementById('speed-group');
   const modeUser    = document.getElementById('mode-user');
@@ -506,6 +900,10 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
   const varEmpty      = document.getElementById('var-empty');
   const varTable      = document.getElementById('var-table');
   const varTbody      = document.getElementById('var-tbody');
+  const splits        = document.getElementById('splits');
+  const resizeVarMain = document.getElementById('resize-var-main');
+  const resizeSplits  = document.getElementById('resize-splits');
+  const resizeMainConsole = document.getElementById('resize-main-console');
   const consoleSection = document.getElementById('console-section');
   const consoleToggle  = document.getElementById('console-toggle');
   const consoleCount   = document.getElementById('console-count');
@@ -552,7 +950,19 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
     renderCanvas();
     renderSplits(t.segments);
     updateVarTable({}, {});
+    updateRecordingErrorBanner();
     updateStatusText();
+  }
+
+  function updateRecordingErrorBanner() {
+    if (!recordingErrorEl) return;
+    if (trace && trace.recordingError) {
+      recordingErrorEl.textContent = trace.recordingError;
+      recordingErrorEl.classList.add('visible');
+    } else {
+      recordingErrorEl.textContent = '';
+      recordingErrorEl.classList.remove('visible');
+    }
   }
 
   function clearAll() {
@@ -567,6 +977,10 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
     splitsList.innerHTML = '';
     scrubber.value = '0'; scrubber.max = '0';
     statusText.textContent = 'No trace loaded';
+    if (recordingErrorEl) {
+      recordingErrorEl.textContent = '';
+      recordingErrorEl.classList.remove('visible');
+    }
     updateVarTable({}, {});
   }
 
@@ -637,9 +1051,10 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
     const pct = trace.events.length > 0
       ? Math.round((status.currentEventId / trace.events.length) * 100) : 0;
     const modeNote = status.startMode === 'user' ? ' [User]' : ' [Full]';
+    const errNote = trace.recordingError ? ' — error' : '';
     statusText.textContent = status.state === 'idle'
-      ? trace.events.length + ' events' + modeNote
-      : status.currentEventId + ' / ' + trace.events.length + ' (' + pct + '%)' + modeNote;
+      ? trace.events.length + ' events' + modeNote + errNote
+      : status.currentEventId + ' / ' + trace.events.length + ' (' + pct + '%)' + modeNote + errNote;
   }
 
   function updatePlayhead(eventId) {
@@ -656,6 +1071,14 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
     if (s === undefined || s === null) return NaN;
     const n = Number(s);
     return isNaN(n) ? NaN : n;
+  }
+
+  function appendEmphasizedValue(td, text) {
+    td.textContent = '';
+    const span = document.createElement('span');
+    span.className = 'diff-val-em';
+    span.textContent = text;
+    td.appendChild(span);
   }
 
   function updateVarTable(prev, cur) {
@@ -682,33 +1105,48 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
       tdName.title = k;
       tr.appendChild(tdName);
 
-      // Previous value cell
       const tdPrev = document.createElement('td');
-      tdPrev.textContent = pVal !== undefined ? pVal : '—';
-      tdPrev.title = pVal ?? '';
-      if (pVal === undefined) tdPrev.style.opacity = '0.3';
-      tr.appendChild(tdPrev);
-
-      // Current value cell — with diff highlight
       const tdCur = document.createElement('td');
-      tdCur.textContent = cVal !== undefined ? cVal : '—';
-      tdCur.title = cVal ?? '';
 
       if (cVal === undefined) {
-        // Variable disappeared
+        tdPrev.textContent = pVal !== undefined ? String(pVal) : '—';
+        tdPrev.title = pVal !== undefined ? String(pVal) : '';
+        tdPrev.className = pVal === undefined ? 'var-cell-empty' : '';
         tdCur.className = 'diff-gone';
         tdCur.textContent = '(gone)';
+        tdCur.title = '';
       } else if (pVal === undefined) {
-        // New variable
+        tdPrev.textContent = '—';
+        tdPrev.className = 'var-cell-empty';
+        tdPrev.title = '';
         tdCur.className = 'diff-new';
+        tdCur.title = String(cVal);
+        appendEmphasizedValue(tdCur, String(cVal));
       } else if (cVal !== pVal) {
-        const pn = tryNum(pVal), cn = tryNum(cVal);
+        const pn = tryNum(pVal),
+          cn = tryNum(cVal);
+        let rowClass = 'diff-changed';
         if (!isNaN(pn) && !isNaN(cn)) {
-          tdCur.className = cn > pn ? 'diff-up' : 'diff-down';
-        } else {
-          tdCur.className = 'diff-changed';
+          rowClass = cn > pn ? 'diff-up' : 'diff-down';
         }
+        if (!tryInlineDiff(tdPrev, tdCur, pVal, cVal, rowClass)) {
+          tdPrev.textContent = String(pVal);
+          tdPrev.title = String(pVal);
+          tdPrev.className = '';
+          tdCur.title = String(cVal);
+          tdCur.className = rowClass;
+          appendEmphasizedValue(tdCur, String(cVal));
+        }
+      } else {
+        tdPrev.textContent = String(pVal);
+        tdPrev.title = String(pVal);
+        tdPrev.className = '';
+        tdCur.className = '';
+        tdCur.textContent = String(cVal);
+        tdCur.title = String(cVal);
       }
+
+      tr.appendChild(tdPrev);
       tr.appendChild(tdCur);
 
       varTbody.appendChild(tr);
@@ -794,7 +1232,7 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
       ctx.globalAlpha = 1;
 
       if (w >= LABEL_MIN) {
-        ctx.fillStyle = '#fff';
+        ctx.fillStyle = getComputedStyle(document.body).color || '#ffffff';
         ctx.font = '11px monospace';
         ctx.textBaseline = 'middle';
         const seqN = segSeqNums[seg.key] ? '#' + segSeqNums[seg.key] + ' ' : '';
@@ -909,6 +1347,21 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
   playBtn.addEventListener('click',  () => vscode.postMessage({ type: 'playPause' }));
   stopBtn.addEventListener('click',  () => vscode.postMessage({ type: 'stop' }));
 
+  const stepPrev = document.getElementById('step-prev');
+  const stepNext = document.getElementById('step-next');
+  if (stepPrev) {
+    stepPrev.addEventListener('click', (e) => {
+      e.stopPropagation();
+      vscode.postMessage({ type: 'stepBy', delta: -1 });
+    });
+  }
+  if (stepNext) {
+    stepNext.addEventListener('click', (e) => {
+      e.stopPropagation();
+      vscode.postMessage({ type: 'stepBy', delta: 1 });
+    });
+  }
+
   speedGroup.addEventListener('click', (e) => {
     const btn = e.target.closest('.speed-btn');
     if (!btn) return;
@@ -922,6 +1375,114 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
     vscode.postMessage({ type: 'seekTo', eventId: parseInt(scrubber.value, 10) });
   });
 
+  // ── Resizable panel layout (persisted in webview state) ───────
+  function clamp(n, lo, hi) {
+    return Math.max(lo, Math.min(hi, n));
+  }
+  function readLayoutState() {
+    const st = vscode.getState() || {};
+    return {
+      varH: clamp(st.varH ?? 160, 72, 420),
+      splitW: clamp(st.splitW ?? 150, 72, 480),
+      consoleH: clamp(st.consoleH ?? 200, 100, 560),
+    };
+  }
+  let layout = readLayoutState();
+  function persistLayout() {
+    vscode.setState({
+      ...(vscode.getState() || {}),
+      varH: layout.varH,
+      splitW: layout.splitW,
+      consoleH: layout.consoleH,
+    });
+  }
+  function applyLayout() {
+    if (varSection) varSection.style.height = layout.varH + 'px';
+    if (splits) splits.style.width = layout.splitW + 'px';
+    if (consoleSection) {
+      if (consoleSection.classList.contains('open')) {
+        consoleSection.style.height = layout.consoleH + 'px';
+      } else {
+        consoleSection.style.height = '';
+      }
+    }
+  }
+  applyLayout();
+
+  function bindResizeV(el, onDrag) {
+    if (!el) return;
+    el.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      el.classList.add('dragging');
+      const startX = e.clientX;
+      const startVal = onDrag.getStart();
+      function move(ev) {
+        onDrag.apply(startVal + (ev.clientX - startX));
+        persistLayout();
+      }
+      function up() {
+        el.classList.remove('dragging');
+        document.removeEventListener('mousemove', move);
+        document.removeEventListener('mouseup', up);
+      }
+      document.addEventListener('mousemove', move);
+      document.addEventListener('mouseup', up);
+    });
+  }
+
+  if (resizeVarMain) {
+    resizeVarMain.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      resizeVarMain.classList.add('dragging');
+      const startY = e.clientY;
+      const startH = layout.varH;
+      function move(ev) {
+        layout.varH = clamp(startH + (ev.clientY - startY), 72, 420);
+        applyLayout();
+        persistLayout();
+      }
+      function up() {
+        resizeVarMain.classList.remove('dragging');
+        document.removeEventListener('mousemove', move);
+        document.removeEventListener('mouseup', up);
+      }
+      document.addEventListener('mousemove', move);
+      document.addEventListener('mouseup', up);
+    });
+  }
+  bindResizeV(resizeSplits, {
+    getStart: function () { return layout.splitW; },
+    apply: function (v) {
+      layout.splitW = clamp(v, 72, 480);
+      applyLayout();
+      renderCanvas();
+    },
+  });
+  if (resizeMainConsole) {
+    resizeMainConsole.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      resizeMainConsole.classList.add('dragging');
+      const startY = e.clientY;
+      const startH = layout.consoleH;
+      if (!consoleSection.classList.contains('open')) {
+        consoleSection.classList.add('open');
+        if (consoleToggle) consoleToggle.textContent = '▼';
+      }
+      function move(ev) {
+        layout.consoleH = clamp(startH - (ev.clientY - startY), 100, 560);
+        applyLayout();
+        persistLayout();
+      }
+      function up() {
+        resizeMainConsole.classList.remove('dragging');
+        document.removeEventListener('mousemove', move);
+        document.removeEventListener('mouseup', up);
+      }
+      document.addEventListener('mousemove', move);
+      document.addEventListener('mouseup', up);
+    });
+  }
+
   window.addEventListener('keydown', (e) => {
     if (e.code === 'Space' && document.activeElement !== scrubber) {
       e.preventDefault();
@@ -933,6 +1494,11 @@ export class TimelinePanel implements vscode.WebviewViewProvider, vscode.Disposa
   document.getElementById('console-header').addEventListener('click', () => {
     const open = consoleSection.classList.toggle('open');
     consoleToggle.textContent = open ? '▼' : '▶';
+    if (open) {
+      consoleSection.style.height = layout.consoleH + 'px';
+    } else {
+      consoleSection.style.height = '';
+    }
   });
 
   // ── Init ──────────────────────────────────────────────────────

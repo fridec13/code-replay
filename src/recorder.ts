@@ -54,10 +54,17 @@ export interface RecorderOptions {
   _compiledBinary?: string;
 }
 
+function truncateForToast(msg: string, max = 200): string {
+  const firstLine = msg.split(/\r?\n/).find((l) => l.trim()) ?? msg;
+  return firstLine.length > max ? firstLine.slice(0, max - 3) + '...' : firstLine;
+}
+
 export class Recorder {
   private _process: cp.ChildProcess | null = null;
   private _outputChannel: vscode.OutputChannel;
   private _tracerDir: string;
+  /** Uncaught error / tracer fatal message; applied on `done` or process `close` */
+  private _recordingError: string | undefined;
 
   constructor(
     private readonly _context: vscode.ExtensionContext,
@@ -82,6 +89,7 @@ export class Recorder {
     const maxEvents = opts.maxEvents ?? config.get<number>('maxEventsPerTrace', 100_000);
 
     this._store.clear();
+    this._recordingError = undefined;
 
     // C++: compile source file to a temporary binary first
     if (opts.language === 'cpp') {
@@ -105,13 +113,14 @@ export class Recorder {
     });
 
     let lineBuffer = '';
+    const entryFile = opts.targetFile;
 
     this._process.stdout?.on('data', (chunk: Buffer) => {
       lineBuffer += chunk.toString('utf8');
       const lines = lineBuffer.split('\n');
       lineBuffer = lines.pop() ?? '';
       for (const line of lines) {
-        this._handleLine(line.trim(), opts.targetFile);
+        this._handleLine(line.trim(), entryFile);
       }
     });
 
@@ -128,6 +137,33 @@ export class Recorder {
 
     this._process.on('close', (code) => {
       this._outputChannel.appendLine(`[Code Replay] Process exited with code ${code}`);
+      const rest = lineBuffer.trim();
+      if (rest) {
+        for (const line of rest.split('\n')) {
+          const t = line.trim();
+          if (t) this._handleLine(t, entryFile);
+        }
+      }
+      // Tracers that emit `error` without `done` (e.g. early exit in cpp_tracer)
+      if (!this._store.trace) {
+        const hasEvents = this._store.eventCount > 0;
+        if (this._recordingError || hasEvents) {
+          this._store.finalize(entryFile, {
+            recordingError:
+              this._recordingError ??
+              (code !== 0
+                ? `Process exited with code ${code} before recording finished.`
+                : undefined),
+          });
+          this._notifyRecordingComplete();
+        } else if (code !== 0) {
+          this._store.finalize(entryFile, {
+            recordingError: `Recording failed (exit code ${code}).`,
+          });
+          this._notifyRecordingComplete();
+        }
+      }
+      this._recordingError = undefined;
       this._process = null;
     });
 
@@ -321,6 +357,31 @@ export class Recorder {
     });
   }
 
+  /** Toast + optional Output after trace is in the store */
+  private _notifyRecordingComplete(totalEvents?: number, wallMs?: number): void {
+    const trace = this._store.trace;
+    if (!trace) return;
+    const n = totalEvents ?? trace.events.length;
+    const ms = wallMs ?? trace.durationMs;
+    if (trace.recordingError) {
+      const short = truncateForToast(trace.recordingError);
+      vscode.window
+        .showErrorMessage(
+          `Code Replay: Recording stopped with an error — ${short}`,
+          'Open Output',
+        )
+        .then((choice) => {
+          if (choice === 'Open Output') {
+            this._outputChannel.show(true);
+          }
+        });
+    } else {
+      vscode.window.showInformationMessage(
+        `Code Replay: Captured ${n} events (${typeof ms === 'number' ? ms.toFixed(0) : String(ms)} ms). Open Timeline to replay.`,
+      );
+    }
+  }
+
   private _handleLine(line: string, entryFile: string): void {
     if (!line) return;
     let parsed: Record<string, unknown>;
@@ -356,17 +417,17 @@ export class Recorder {
       this._outputChannel.appendLine(
         `[Code Replay] Done — ${totalEvents} events in ${durationMs.toFixed(1)} ms`,
       );
-      this._store.finalize(entryFile);
-      vscode.window.showInformationMessage(
-        `Code Replay: Captured ${totalEvents} events (${durationMs.toFixed(0)} ms). Open Timeline to replay.`,
-      );
+      const err = this._recordingError;
+      this._recordingError = undefined;
+      this._store.finalize(entryFile, { recordingError: err });
+      this._notifyRecordingComplete(totalEvents, durationMs);
       return;
     }
 
     if (type === 'error') {
       const msg = parsed['message'] as string;
+      this._recordingError = msg;
       this._outputChannel.appendLine(`[Code Replay] Script error:\n${msg}`);
-      vscode.window.showErrorMessage(`Code Replay: Script error — see Output panel.`);
       return;
     }
 
